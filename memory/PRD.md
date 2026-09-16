@@ -93,3 +93,8 @@
 ## Bug fix (Sep 2026): URL di footer PDF
 - Root cause: browser menambahkan header/footer cetak (URL halaman, judul, tanggal) di area margin saat window.print().
 - Fix: `@page { margin: 0; size: A4 }` di HTML laporan tunggal (result/[id].tsx) & gabungan (pdf-report.ts), padding dipindah ke body/.page/.cover, <title> laporan ditambahkan; Result screen memakai printHtmlOnWeb bersama. Diverifikasi testing agent (iteration_8).
+
+## Fix (Sep 2026): Ekspor PDF di HP
+- `imageToDataUri` (src/api.ts): native → FileSystem.downloadAsync ke cache + readAsStringAsync base64 (RN Blob/FileReader tidak andal); web tetap fetch→Blob→FileReader.
+- result/[id].tsx: toast error ekspor menampilkan e.message asli ("Export PDF gagal: …"); Sharing menambah UTI com.adobe.pdf (result & history).
+- Web path diverifikasi tidak berubah (iframe HTML: data:image ada, @page ada, tanpa URL).

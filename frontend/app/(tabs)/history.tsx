@@ -102,6 +102,7 @@ export default function History() {
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(uri, {
             mimeType: "application/pdf",
+            UTI: "com.adobe.pdf",
             dialogTitle: `KHT Combined Report (${selected.length} sample)`,
           });
         } else {

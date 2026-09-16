@@ -250,8 +250,26 @@ export async function uploadImage(uri: string): Promise<string> {
 
 // Fetch an image URL and return a base64 data URI (used to embed the original
 // photo directly inside the exported PDF report).
+// - Native: download to the cache dir with expo-file-system and read it back as
+//   base64 (React Native's Blob/FileReader path is unreliable for large files).
+// - Web: fetch -> Blob -> FileReader (unchanged, already works in browsers).
 export async function imageToDataUri(url: string): Promise<string | null> {
+  if (!url) return null;
+  if (url.startsWith("data:")) return url;
   try {
+    if (Platform.OS !== "web") {
+      const clean = url.split("?")[0].toLowerCase();
+      const ext = clean.endsWith(".png") ? "png" : clean.endsWith(".webp") ? "webp" : "jpg";
+      const dest = `${FileSystem.cacheDirectory}pdf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const dl = await FileSystem.downloadAsync(url, dest);
+      if (dl.status < 200 || dl.status >= 300) return null;
+      const mime =
+        (dl.headers?.["Content-Type"] || dl.headers?.["content-type"] || "").split(";")[0].trim() ||
+        (ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
+      const b64 = await FileSystem.readAsStringAsync(dl.uri, { encoding: FileSystem.EncodingType.Base64 });
+      FileSystem.deleteAsync(dl.uri, { idempotent: true }).catch(() => {});
+      return `data:${mime};base64,${b64}`;
+    }
     const blob = await (await fetch(url)).blob();
     return await new Promise<string>((resolve, reject) => {
       const fr = new FileReader();

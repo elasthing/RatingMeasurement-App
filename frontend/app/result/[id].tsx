@@ -166,13 +166,14 @@ export default function Result() {
       } else {
         const { uri } = await Print.printToFileAsync({ html });
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: "KHT Test Report" });
+          await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: "KHT Test Report" });
         } else {
           toast("PDF generated.", "success");
         }
       }
-    } catch (e) {
-      toast("Could not export report.", "error");
+    } catch (e: any) {
+      const msg = e?.message ? String(e.message).slice(0, 140) : "unknown error";
+      toast(`Export PDF gagal: ${msg}`, "error");
     } finally {
       setExporting(false);
     }
