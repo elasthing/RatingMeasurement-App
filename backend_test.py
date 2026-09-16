@@ -10,7 +10,7 @@ import requests
 from pathlib import Path
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://fleet-monitor-216.preview.emergentagent.com/api"
+BACKEND_URL = "https://tube-test-app.preview.emergentagent.com/api"
 TEST_IMAGE_PATH = "/app/backend/reference/color_scale.jpg"
 
 # Test metadata
