@@ -106,3 +106,7 @@
 
 ## Deployment health check (Sep 2026): PASS
 - Fixed: frontend/yarn.lock dibuat (package-lock.json dihapus, repo memakai yarn); pola .env dihapus dari root .gitignore agar env tersedia di deploy context. Lint warnings dibersihkan.
+
+## Fix v2 (Sep 2026): Share PDF di HP (Expo Go Android)
+- Root cause: expo-print menulis PDF ke cacheDir host (Expo Go) di luar scoped dir → FilePermission scoped menolak READ, sehingga shareAsync DAN copyAsync gagal (fallback sebelumnya diam-diam memakai uri asli).
+- Fix: `printToFileAsync({ base64: true })` → `writeAsStringAsync(documentDirectory/<nama>.pdf, base64)` → shareAsync dari documentDirectory. Tidak pernah membaca path terbatas.

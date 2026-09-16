@@ -208,30 +208,29 @@ export async function buildCombinedReportHtml(tests: TestRecord[]): Promise<stri
 }
 
 // Native (iOS/Android): render the report HTML to a PDF file and open the share
-// sheet. `Print.printToFileAsync` writes into a cache sub-folder that Android's
-// FileProvider may refuse to expose ("Not allowed to read file under given URL"),
-// so the PDF is first copied into the app's document directory under a readable
-// `file://` path with a meaningful file name.
+// sheet. `Print.printToFileAsync` writes into the host app's cache folder. In
+// Expo Go (and with Android's scoped file permissions) that folder is NOT
+// readable by the JS FileSystem nor by expo-sharing ("Not allowed to read file
+// under given URL") — even copyAsync from it fails. So we ask expo-print for the
+// PDF as base64 and write it ourselves into the app's document directory (a
+// path that is always readable/shareable), under a meaningful file name.
 export async function sharePdfNative(html: string, fileName: string, dialogTitle: string): Promise<boolean> {
-  const { uri } = await Print.printToFileAsync({ html, base64: false });
   const safe = fileName.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "KHT_Report";
-  const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? "";
-  let target = uri;
-  if (dir) {
-    const dest = `${dir}${safe}.pdf`;
-    try {
-      await FileSystem.deleteAsync(dest, { idempotent: true });
-      await FileSystem.copyAsync({ from: uri, to: dest });
-      target = dest;
-    } catch {
-      target = uri; // fall back to the original print output
-    }
-  }
-  if (!target.startsWith("file://")) target = `file://${target}`;
-  const info = await FileSystem.getInfoAsync(target);
-  if (!info.exists) throw new Error("File PDF tidak ditemukan setelah dibuat.");
+  const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+  if (!dir) throw new Error("Direktori penyimpanan aplikasi tidak tersedia.");
+
+  const { uri, base64 } = await Print.printToFileAsync({ html, base64: true });
+  if (!base64) throw new Error("PDF tidak berisi data (base64 kosong).");
+
+  const dest = `${dir}${safe}.pdf`;
+  await FileSystem.writeAsStringAsync(dest, base64, { encoding: FileSystem.EncodingType.Base64 });
+  // best-effort cleanup of the print module's temp file (may be unreadable → ignore)
+  FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+
+  const info = await FileSystem.getInfoAsync(dest);
+  if (!info.exists) throw new Error("File PDF tidak ditemukan setelah disimpan.");
   if (!(await Sharing.isAvailableAsync())) return false;
-  await Sharing.shareAsync(target, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle });
+  await Sharing.shareAsync(dest, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle });
   return true;
 }
 
