@@ -49,21 +49,38 @@ def reference_b64() -> str:
     return base64.b64encode(read_bundled_reference()).decode("utf-8")
 
 
+# Result status labels. CLEAR (green) when rating >= 7, otherwise TARNISH (red).
+# Legacy records/AI output may still say PASS/FAIL -> normalized to the new labels.
+STATUS_CLEAR = "CLEAR"
+STATUS_TARNISH = "TARNISH"
+LEGACY_STATUS = {"PASS": STATUS_CLEAR, "FAIL": STATUS_TARNISH}
+
+
+def status_for_rating(rating: float) -> str:
+    return STATUS_CLEAR if rating >= 7 else STATUS_TARNISH
+
+
+def normalize_status(value, rating: float) -> str:
+    s = str(value or "").strip().upper()
+    s = LEGACY_STATUS.get(s, s)
+    return s if s in (STATUS_CLEAR, STATUS_TARNISH) else status_for_rating(rating)
+
+
 # Nikko COLOR SCALE level metadata. Convention (matches the physical board and
 # the app): 0 = darkest/heaviest deposit (worst) .. 10 = clear/colorless (best).
-# PASS when rating >= 7.
+# CLEAR when rating >= 7.
 NIKKO_LEVELS = [
-    {"level": 0, "color": "#0E0A06", "name": "Hitam Pekat", "condition": "Endapan karbon hitam penuh, tabung tersumbat total.", "deposit_pct": "100%", "grade": "FAILED", "status": "FAIL"},
-    {"level": 1, "color": "#241407", "name": "Cokelat Kehitaman", "condition": "Endapan sangat berat mendekati hitam.", "deposit_pct": "~100%", "grade": "FAILED", "status": "FAIL"},
-    {"level": 2, "color": "#3C2610", "name": "Cokelat Sangat Gelap", "condition": "Endapan sangat berat (extremely heavy).", "deposit_pct": "90 - 100%", "grade": "VERY POOR", "status": "FAIL"},
-    {"level": 3, "color": "#5E3C16", "name": "Cokelat Gelap", "condition": "Endapan sangat tebal (very heavy).", "deposit_pct": "75 - 90%", "grade": "POOR", "status": "FAIL"},
-    {"level": 4, "color": "#7A4A20", "name": "Cokelat", "condition": "Endapan tebal (heavy).", "deposit_pct": "60 - 75%", "grade": "POOR", "status": "FAIL"},
-    {"level": 5, "color": "#A9702E", "name": "Amber / Cokelat Muda", "condition": "Endapan menengah-berat (moderate heavy).", "deposit_pct": "45 - 60%", "grade": "FAIR", "status": "FAIL"},
-    {"level": 6, "color": "#C9992F", "name": "Kuning-Amber", "condition": "Endapan menengah (moderate).", "deposit_pct": "30 - 45%", "grade": "FAIR", "status": "FAIL"},
-    {"level": 7, "color": "#D8B24C", "name": "Kuning Jerami", "condition": "Endapan ringan (light).", "deposit_pct": "15 - 30%", "grade": "GOOD", "status": "PASS"},
-    {"level": 8, "color": "#E4D08A", "name": "Kuning Pucat", "condition": "Endapan sedikit (slight).", "deposit_pct": "5 - 15%", "grade": "VERY GOOD", "status": "PASS"},
-    {"level": 9, "color": "#EFE6C4", "name": "Kuning Sangat Samar", "condition": "Endapan sangat sedikit (very slight).", "deposit_pct": "< 5%", "grade": "EXCELLENT", "status": "PASS"},
-    {"level": 10, "color": "#EAF1F0", "name": "Bening / Tak Berwarna", "condition": "Tabung bersih tanpa endapan.", "deposit_pct": "0%", "grade": "EXCELLENT", "status": "PASS"},
+    {"level": 0, "color": "#0E0A06", "name": "Hitam Pekat", "condition": "Endapan karbon hitam penuh, tabung tersumbat total.", "deposit_pct": "100%", "grade": "FAILED", "status": "TARNISH"},
+    {"level": 1, "color": "#241407", "name": "Cokelat Kehitaman", "condition": "Endapan sangat berat mendekati hitam.", "deposit_pct": "~100%", "grade": "FAILED", "status": "TARNISH"},
+    {"level": 2, "color": "#3C2610", "name": "Cokelat Sangat Gelap", "condition": "Endapan sangat berat (extremely heavy).", "deposit_pct": "90 - 100%", "grade": "VERY POOR", "status": "TARNISH"},
+    {"level": 3, "color": "#5E3C16", "name": "Cokelat Gelap", "condition": "Endapan sangat tebal (very heavy).", "deposit_pct": "75 - 90%", "grade": "POOR", "status": "TARNISH"},
+    {"level": 4, "color": "#7A4A20", "name": "Cokelat", "condition": "Endapan tebal (heavy).", "deposit_pct": "60 - 75%", "grade": "POOR", "status": "TARNISH"},
+    {"level": 5, "color": "#A9702E", "name": "Amber / Cokelat Muda", "condition": "Endapan menengah-berat (moderate heavy).", "deposit_pct": "45 - 60%", "grade": "FAIR", "status": "TARNISH"},
+    {"level": 6, "color": "#C9992F", "name": "Kuning-Amber", "condition": "Endapan menengah (moderate).", "deposit_pct": "30 - 45%", "grade": "FAIR", "status": "TARNISH"},
+    {"level": 7, "color": "#D8B24C", "name": "Kuning Jerami", "condition": "Endapan ringan (light).", "deposit_pct": "15 - 30%", "grade": "GOOD", "status": "CLEAR"},
+    {"level": 8, "color": "#E4D08A", "name": "Kuning Pucat", "condition": "Endapan sedikit (slight).", "deposit_pct": "5 - 15%", "grade": "VERY GOOD", "status": "CLEAR"},
+    {"level": 9, "color": "#EFE6C4", "name": "Kuning Sangat Samar", "condition": "Endapan sangat sedikit (very slight).", "deposit_pct": "< 5%", "grade": "EXCELLENT", "status": "CLEAR"},
+    {"level": 10, "color": "#EAF1F0", "name": "Bening / Tak Berwarna", "condition": "Tabung bersih tanpa endapan.", "deposit_pct": "0%", "grade": "EXCELLENT", "status": "CLEAR"},
 ]
 
 # ---------------------------------------------------------------------------
@@ -162,7 +179,7 @@ class TestRecord(BaseModel):
     rating: float = 0
     performance: str = ""
     confidence: float = 0
-    status: str = "PASS"
+    status: str = "CLEAR"
     deposit_level_label: str = ""
     parameters: Parameters = Field(default_factory=Parameters)
     ai_summary: str = ""
@@ -204,7 +221,7 @@ matching the Nikko COLOR SCALE reference board:
 1  = near-black brown -> FAILED
 0  = black, 100% (Plugged) -> FAILED
 On the reference board the CLEAR tube = 10 and the BLACK tube = 0.
-PASS if rating >= 7, otherwise FAIL."""
+CLEAR if rating >= 7, otherwise TARNISH."""
 
 ANALYSIS_PROMPT = f"""You are the KHT-AI-V2 deposit rating engine for a Komatsu Hot Tube Tester (HTT).
 
@@ -230,7 +247,7 @@ Return ONLY a valid minified JSON object (no markdown, no explanation) with EXAC
  "rating": <number 0-10, one decimal, matched against the COLOR SCALE board>,
  "performance": <one of "EXCELLENT","VERY GOOD","GOOD","FAIR","POOR","VERY POOR","FAILED">,
  "confidence": <number 0-100>,
- "status": <"PASS" or "FAIL">,
+ "status": <"CLEAR" or "TARNISH">,
  "deposit_level_label": <short string like "5 - 15% (Slight)">,
  "deposit_area_pct": <number>,
  "deposit_length_mm": <number>,
@@ -484,7 +501,7 @@ def _build_record(req: AnalyzeRequest, ai: dict) -> TestRecord:
         rating=rating,
         performance=str(ai.get("performance", "")).upper(),
         confidence=_clamp(ai.get("confidence"), 0, 100),
-        status=str(ai.get("status", "PASS")).upper() if ai.get("status") else ("PASS" if rating >= 7 else "FAIL"),
+        status=normalize_status(ai.get("status"), rating),
         deposit_level_label=str(ai.get("deposit_level_label", "")),
         parameters=params,
         ai_summary=str(ai.get("summary", "")),
@@ -522,11 +539,11 @@ async def update_test(test_id: str, upd: TestUpdate):
     changes: dict = {k: v for k, v in upd.model_dump(exclude_none=True).items()}
     if "rating" in changes:
         changes["rating"] = _clamp(changes["rating"], 0, 10)
-        # Recompute PASS/FAIL from the edited rating unless caller overrides it.
+        # Recompute CLEAR/TARNISH from the edited rating unless caller overrides it.
         if "status" not in changes:
-            changes["status"] = "PASS" if changes["rating"] >= 7 else "FAIL"
+            changes["status"] = status_for_rating(changes["rating"])
     if "status" in changes and changes["status"]:
-        changes["status"] = str(changes["status"]).upper()
+        changes["status"] = normalize_status(changes["status"], changes.get("rating", doc.get("rating", 0)))
     if not changes:
         return TestRecord(**doc)
     changes["edited"] = True
@@ -549,7 +566,7 @@ async def dashboard():
     docs = await db.tests.find({"deleted_at": None}).sort("created_at", -1).to_list(500)
     tests = [TestRecord(**d) for d in docs]
     total = len(tests)
-    passed = sum(1 for t in tests if t.status == "PASS")
+    passed = sum(1 for t in tests if t.status == STATUS_CLEAR)
     avg_rating = round(sum(t.rating for t in tests) / total, 1) if total else 0
     latest = tests[0].model_dump() if tests else None
     return {
@@ -598,7 +615,7 @@ async def color_scale():
 SEED = [
     {
         "sample_id": "KHT-2026-07-30-001", "oil_type": "Engine Oil SAE 15W-40", "batch": "LOT-20260730-A",
-        "operator": "Karis Setia", "rating": 8.7, "performance": "VERY GOOD", "confidence": 98.2, "status": "PASS",
+        "operator": "Karis Setia", "rating": 8.7, "performance": "VERY GOOD", "confidence": 98.2, "status": "CLEAR",
         "deposit_level_label": "5 - 15% (Slight)",
         "p": [8.9, 125, 44.6, 54.2, 9.6, 19.8, 132, 0.42, 90, 215],
         "img": "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
@@ -606,7 +623,7 @@ SEED = [
     },
     {
         "sample_id": "KHT-2026-07-28-004", "oil_type": "Hydraulic Oil HO-46", "batch": "LOT-20260728-C",
-        "operator": "Karis Setia", "rating": 6.2, "performance": "FAIR", "confidence": 95.1, "status": "FAIL",
+        "operator": "Karis Setia", "rating": 6.2, "performance": "FAIR", "confidence": 95.1, "status": "TARNISH",
         "deposit_level_label": "30 - 45% (Moderate)",
         "p": [32.4, 190, 61.3, 41.0, 14.2, 26.4, 178, 0.71, 55, 245],
         "img": "https://images.unsplash.com/photo-1581093458791-9d09a5c0a5b9?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
@@ -614,7 +631,7 @@ SEED = [
     },
     {
         "sample_id": "KHT-2026-07-25-002", "oil_type": "Engine Oil SAE 10W-30", "batch": "LOT-20260725-B",
-        "operator": "Dwi Agus", "rating": 9.4, "performance": "EXCELLENT", "confidence": 97.6, "status": "PASS",
+        "operator": "Dwi Agus", "rating": 9.4, "performance": "EXCELLENT", "confidence": 97.6, "status": "CLEAR",
         "deposit_level_label": "< 5% (Very Slight)",
         "p": [3.1, 60, 18.2, 68.5, 4.1, 11.2, 96, 0.18, 120, 180],
         "img": "https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
@@ -622,7 +639,7 @@ SEED = [
     },
     {
         "sample_id": "KHT-2026-07-22-007", "oil_type": "Gear Oil GL-5 85W-140", "batch": "LOT-20260722-D",
-        "operator": "Dwi Agus", "rating": 4.1, "performance": "POOR", "confidence": 92.8, "status": "FAIL",
+        "operator": "Dwi Agus", "rating": 4.1, "performance": "POOR", "confidence": 92.8, "status": "TARNISH",
         "deposit_level_label": "60 - 75% (Heavy)",
         "p": [63.7, 250, 82.5, 28.3, 19.8, 31.6, 212, 1.12, 30, 285],
         "img": "https://images.unsplash.com/photo-1614308457932-e16d85c5d053?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
@@ -665,7 +682,7 @@ async def seed_reference():
         doc = {
             "key": "nikko_color_scale",
             "title": "Nikko COLOR SCALE",
-            "note": "0 = paling gelap/pekat (terburuk) · 10 = bening/tak berwarna (terbaik). LULUS bila rating >= 7.",
+            "note": "0 = paling gelap/pekat (terburuk) · 10 = bening/tak berwarna (terbaik). CLEAR bila rating >= 7.",
             "content_type": "image/jpeg",
             "image_base64": reference_b64(),
             "levels": NIKKO_LEVELS,
@@ -690,6 +707,14 @@ async def on_startup():
         await seed()
     except Exception as e:
         logger.warning("Seed failed: %s", e)
+    try:
+        # One-time relabel of legacy records: PASS -> CLEAR, FAIL -> TARNISH.
+        for old, new in LEGACY_STATUS.items():
+            r = await db.tests.update_many({"status": old}, {"$set": {"status": new}})
+            if r.modified_count:
+                logger.info("Relabelled %d tests %s -> %s", r.modified_count, old, new)
+    except Exception as e:
+        logger.warning("Status relabel failed: %s", e)
 
 
 app.include_router(api_router)

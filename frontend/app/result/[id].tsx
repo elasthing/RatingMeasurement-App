@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { fileUrl, imageToDataUri, TestUpdate, useDeleteTest, useTest, useUpdateTest } from "@/src/api";
+import { fileUrl, imageToDataUri, isClear, statusLabel, TestUpdate, useDeleteTest, useTest, useUpdateTest } from "@/src/api";
 
 // Web-only: print a specific HTML document in an isolated hidden iframe.
 // expo-print's web implementation just calls window.print(), which prints the
@@ -153,15 +153,16 @@ export default function Result() {
       const rows = paramRows(test.parameters)
         .map((r) => `<tr><td>${r.label}</td><td style="text-align:right;font-weight:bold">${r.value}</td></tr>`)
         .join("");
+      const scolor = isClear(test.status) ? "#15803D" : "#C1220E";
       const html = `
         <html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
         <style>
           body{font-family:-apple-system,Helvetica,Arial;padding:24px;color:#0A1420}
           h1{color:#0A1420;margin:0} .sub{color:#00898a;font-size:12px;letter-spacing:1px}
-          .rating{font-size:64px;font-weight:800;color:${test.status === "PASS" ? "#15803D" : "#C1220E"}}
+          .rating{font-size:64px;font-weight:800;color:${scolor}}
           table{width:100%;border-collapse:collapse;margin-top:12px}
           td{padding:8px 4px;border-bottom:1px solid #e5e7eb;font-size:13px}
-          .badge{display:inline-block;padding:4px 12px;border-radius:4px;color:#fff;font-weight:bold;background:${test.status === "PASS" ? "#15803D" : "#C1220E"}}
+          .badge{display:inline-block;padding:4px 12px;border-radius:4px;color:#fff;font-weight:bold;background:${scolor}}
           .card{border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:16px}
           img{width:100%;border-radius:8px;margin-top:12px}
         </style></head><body>
@@ -170,7 +171,7 @@ export default function Result() {
           <div style="margin-top:12px">
             <span class="rating">${test.rating.toFixed(1)}</span>
             <span style="font-size:20px;color:#64748b">/10</span>
-            &nbsp;&nbsp;<span class="badge">${test.status}</span>
+            &nbsp;&nbsp;<span class="badge">${statusLabel(test.status)}</span>
             <div style="color:#64748b;font-size:13px">${test.performance} · Confidence ${test.confidence.toFixed(1)}% · ${test.deposit_level_label}</div>
           </div>
           <img src="${imgSrc}" />
@@ -290,7 +291,7 @@ export default function Result() {
                   placeholderTextColor={colors.muted}
                   autoFocus
                 />
-                <Text style={styles.editHint}>Status dihitung otomatis: PASS bila ≥ 7, selain itu FAIL.</Text>
+                <Text style={styles.editHint}>Status dihitung otomatis: CLEAR bila ≥ 7, selain itu TARNISH.</Text>
               </View>
             ) : (
               <View style={{ alignItems: "center", marginVertical: spacing.md }}>
@@ -304,8 +305,8 @@ export default function Result() {
               </View>
               <View style={[styles.splitCell, { borderLeftWidth: 1, borderLeftColor: colors.divider }]}>
                 <Text style={styles.splitLabel}>STATUS</Text>
-                <Text style={[styles.splitValue, { color: test.status === "PASS" ? colors.success : colors.error }]}>
-                  {test.status}
+                <Text style={[styles.splitValue, { color: isClear(test.status) ? colors.success : colors.error }]}>
+                  {statusLabel(test.status)}
                 </Text>
               </View>
             </View>

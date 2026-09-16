@@ -75,6 +75,18 @@ export type DashboardData = {
   avg_rating: number;
 };
 
+// Result status labels: CLEAR (green, rating >= 7) / TARNISH (red).
+// Older records may still carry the legacy PASS/FAIL values.
+export const STATUS_CLEAR = "CLEAR";
+export const STATUS_TARNISH = "TARNISH";
+export function isClear(status?: string | null): boolean {
+  const s = (status ?? "").toUpperCase();
+  return s === STATUS_CLEAR || s === "PASS";
+}
+export function statusLabel(status?: string | null): string {
+  return isClear(status) ? STATUS_CLEAR : STATUS_TARNISH;
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);

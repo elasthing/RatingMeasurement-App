@@ -16,18 +16,18 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { TestRecord, useTests } from "@/src/api";
+import { isClear, TestRecord, useTests } from "@/src/api";
 import { Header } from "@/src/components/Header";
 import { HistoryCard } from "@/src/components/HistoryCard";
 import { useToast } from "@/src/components/Toast";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { buildCombinedReportHtml, printHtmlOnWeb } from "@/src/utils/pdf-report";
 
-type Filter = "all" | "pass" | "fail";
+type Filter = "all" | "clear" | "tarnish";
 const FILTERS: { label: string; value: Filter }[] = [
   { label: "All", value: "all" },
-  { label: "Pass", value: "pass" },
-  { label: "Fail", value: "fail" },
+  { label: "Clear", value: "clear" },
+  { label: "Tarnish", value: "tarnish" },
 ];
 
 export default function History() {
@@ -47,7 +47,7 @@ export default function History() {
   const rows = useMemo(() => {
     const list = data ?? [];
     if (filter === "all") return list;
-    return list.filter((t) => t.status.toUpperCase() === (filter === "pass" ? "PASS" : "FAIL"));
+    return list.filter((t) => isClear(t.status) === (filter === "clear"));
   }, [data, filter]);
 
   const enterSelection = useCallback((initialId?: string) => {

@@ -4,7 +4,7 @@
 // - `buildCombinedReportHtml`: cover page + one page per selected sample,
 //   used by the multi-select export flow on the History screen.
 
-import { fileUrl, imageToDataUri, TestRecord } from "@/src/api";
+import { fileUrl, imageToDataUri, isClear, statusLabel, TestRecord } from "@/src/api";
 import { paramRows } from "@/src/components/ParameterTable";
 import { fmtDate, fmtDateTime } from "@/src/utils/format";
 
@@ -16,7 +16,7 @@ function esc(s: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
-const statusColor = (status: string) => (status === "PASS" ? "#15803D" : "#C1220E");
+const statusColor = (status: string) => (isClear(status) ? "#15803D" : "#C1220E");
 
 function commonStyles(): string {
   return `
@@ -80,7 +80,7 @@ function renderSamplePage(test: TestRecord, imgSrc: string, index: number, total
         </div>
         <div style="text-align:right">
           <div style="font-size:10px;color:#64748b">${esc(fmtDateTime(test.created_at))}</div>
-          <div style="margin-top:4px"><span class="badge" style="background:${scolor}">${esc(test.status)}</span></div>
+          <div style="margin-top:4px"><span class="badge" style="background:${scolor}">${esc(statusLabel(test.status))}</span></div>
         </div>
       </div>
 
@@ -131,7 +131,7 @@ function renderSamplePage(test: TestRecord, imgSrc: string, index: number, total
 
 function renderCoverPage(tests: TestRecord[]): string {
   const total = tests.length;
-  const passed = tests.filter((t) => t.status === "PASS").length;
+  const passed = tests.filter((t) => isClear(t.status)).length;
   const failed = total - passed;
   const avg = total ? (tests.reduce((s, t) => s + t.rating, 0) / total).toFixed(1) : "0.0";
 
@@ -144,7 +144,7 @@ function renderCoverPage(tests: TestRecord[]): string {
         <td>${esc(t.meta.oil_type || "—")}</td>
         <td>${esc(fmtDate(t.created_at))}</td>
         <td class="rate" style="color:${c}">${t.rating.toFixed(1)}</td>
-        <td><span class="badge" style="background:${c}">${esc(t.status)}</span></td>
+        <td><span class="badge" style="background:${c}">${esc(statusLabel(t.status))}</span></td>
       </tr>`;
     })
     .join("");
@@ -160,8 +160,8 @@ function renderCoverPage(tests: TestRecord[]): string {
 
       <div class="stat-row">
         <div class="stat-cell"><div class="k">Total Sampel</div><div class="v">${total}</div></div>
-        <div class="stat-cell"><div class="k">Pass</div><div class="v" style="color:#15803D">${passed}</div></div>
-        <div class="stat-cell"><div class="k">Fail</div><div class="v" style="color:#C1220E">${failed}</div></div>
+        <div class="stat-cell"><div class="k">Clear</div><div class="v" style="color:#15803D">${passed}</div></div>
+        <div class="stat-cell"><div class="k">Tarnish</div><div class="v" style="color:#C1220E">${failed}</div></div>
         <div class="stat-cell"><div class="k">Rata-rata Rating</div><div class="v">${avg}</div></div>
       </div>
 

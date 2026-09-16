@@ -86,8 +86,8 @@ export default function Dashboard() {
             {/* Stats */}
             <View style={styles.statsRow}>
               <Stat label="TOTAL" value={String(data?.total ?? 0)} />
-              <Stat label="PASS" value={String(data?.passed ?? 0)} color={colors.success} />
-              <Stat label="FAIL" value={String(data?.failed ?? 0)} color={colors.error} />
+              <Stat label="CLEAR" value={String(data?.passed ?? 0)} color={colors.success} />
+              <Stat label="TARNISH" value={String(data?.failed ?? 0)} color={colors.error} />
               <Stat label="AVG" value={(data?.avg_rating ?? 0).toFixed(1)} color={colors.brandSecondary} />
             </View>
 

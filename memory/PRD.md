@@ -84,3 +84,8 @@
 ## Bug fix (Sep 2026): Upload foto "Failed to fetch"
 - Root cause: browser page origin ≠ EXPO_PUBLIC_BACKEND_URL host (cross-origin), dan edge proxy menulis ulang header Origin sehingga ACAO yang di-reflect backend tidak cocok → browser memblokir POST /api/upload dan preflight chunk.
 - Fix: (1) frontend web memakai `window.location.origin` sebagai base API (same-origin, tanpa CORS); (2) backend CORS `allow_origins=["*"]`, `allow_credentials=False`.
+
+## Relabel status (Sep 2026): PASS -> CLEAR, FAIL -> TARNISH
+- Backend: konstanta STATUS_CLEAR/STATUS_TARNISH, `normalize_status()` (menerima legacy PASS/FAIL dari AI/klien), prompt AI, NIKKO_LEVELS, seed, dashboard; migrasi otomatis saat startup (`update_many` PASS→CLEAR, FAIL→TARNISH).
+- Frontend: helper `isClear()/statusLabel()` di src/api.ts dipakai StatusBadge, Dashboard stat, History filter (Clear/Tarnish), Result detail, PDF single & combined (pdf-report.ts), TrendChart label.
+- Warna dipertahankan: CLEAR hijau (colors.success/#15803D), TARNISH merah (colors.error/#C1220E). Grade performa (EXCELLENT…FAILED) tidak diubah.

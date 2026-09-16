@@ -49,7 +49,7 @@ export function TrendChart({ data, width, height = 220 }: { data: TrendPoint[]; 
         ))}
       </Svg>
       <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: colors.success, marginTop: 4 }}>
-        - - - PASS threshold (7.0)
+        - - - CLEAR threshold (7.0)
       </Text>
     </View>
   );
