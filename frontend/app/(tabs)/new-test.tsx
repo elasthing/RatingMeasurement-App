@@ -64,7 +64,7 @@ export default function NewTest() {
       }
       const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
       if (!res.canceled) openCropper(res.assets[0]);
-    } catch (e) {
+    } catch {
       toast("Could not open image source.", "error");
     }
   }

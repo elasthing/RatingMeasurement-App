@@ -103,3 +103,6 @@
 - Helper baru `sharePdfNative(html, fileName, dialogTitle)` di src/utils/pdf-report.ts: printToFileAsync → salin ke documentDirectory dengan nama `KHT_Report_<sampleId>_<tgl>.pdf` / `KHT_Combined_Report_<n>samples_<tgl>.pdf` → pastikan prefix file:// → getInfoAsync → Sharing.shareAsync (mimeType pdf, UTI com.adobe.pdf).
 - Dipakai oleh result/[id].tsx dan (tabs)/history.tsx (import expo-print/expo-sharing dipindah ke helper). Web path (printHtmlOnWeb) tidak berubah; diverifikasi ulang via Playwright.
 - Belum diuji di perangkat asli (perlu Expo Go / build).
+
+## Deployment health check (Sep 2026): PASS
+- Fixed: frontend/yarn.lock dibuat (package-lock.json dihapus, repo memakai yarn); pola .env dihapus dari root .gitignore agar env tersedia di deploy context. Lint warnings dibersihkan.

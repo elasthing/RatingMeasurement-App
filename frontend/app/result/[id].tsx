@@ -1,4 +1,3 @@
-import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Check, Export, PencilSimple, TrashSimple, X } from "phosphor-react-native";
 import { useState } from "react";
