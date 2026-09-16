@@ -98,3 +98,8 @@
 - `imageToDataUri` (src/api.ts): native → FileSystem.downloadAsync ke cache + readAsStringAsync base64 (RN Blob/FileReader tidak andal); web tetap fetch→Blob→FileReader.
 - result/[id].tsx: toast error ekspor menampilkan e.message asli ("Export PDF gagal: …"); Sharing menambah UTI com.adobe.pdf (result & history).
 - Web path diverifikasi tidak berubah (iframe HTML: data:image ada, @page ada, tanpa URL).
+
+## Fix (Sep 2026): Share PDF di HP "Not allowed to read file under given URL"
+- Helper baru `sharePdfNative(html, fileName, dialogTitle)` di src/utils/pdf-report.ts: printToFileAsync → salin ke documentDirectory dengan nama `KHT_Report_<sampleId>_<tgl>.pdf` / `KHT_Combined_Report_<n>samples_<tgl>.pdf` → pastikan prefix file:// → getInfoAsync → Sharing.shareAsync (mimeType pdf, UTI com.adobe.pdf).
+- Dipakai oleh result/[id].tsx dan (tabs)/history.tsx (import expo-print/expo-sharing dipindah ke helper). Web path (printHtmlOnWeb) tidak berubah; diverifikasi ulang via Playwright.
+- Belum diuji di perangkat asli (perlu Expo Go / build).

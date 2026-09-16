@@ -1,6 +1,4 @@
 import { useRouter } from "expo-router";
-import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 import { Check, CheckSquare, Export, MagnifyingGlass, Square, X } from "phosphor-react-native";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -21,7 +19,7 @@ import { Header } from "@/src/components/Header";
 import { HistoryCard } from "@/src/components/HistoryCard";
 import { useToast } from "@/src/components/Toast";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { buildCombinedReportHtml, printHtmlOnWeb } from "@/src/utils/pdf-report";
+import { buildCombinedReportHtml, printHtmlOnWeb, sharePdfNative } from "@/src/utils/pdf-report";
 
 type Filter = "all" | "clear" | "tarnish";
 const FILTERS: { label: string; value: Filter }[] = [
@@ -98,16 +96,13 @@ export default function History() {
         printHtmlOnWeb(html);
         toast(`Menyiapkan PDF gabungan (${selected.length} sample).`, "success");
       } else {
-        const { uri } = await Print.printToFileAsync({ html });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, {
-            mimeType: "application/pdf",
-            UTI: "com.adobe.pdf",
-            dialogTitle: `KHT Combined Report (${selected.length} sample)`,
-          });
-        } else {
-          toast("PDF berhasil dibuat.", "success");
-        }
+        const stamp = new Date().toISOString().slice(0, 10);
+        const shared = await sharePdfNative(
+          html,
+          `KHT_Combined_Report_${selected.length}samples_${stamp}`,
+          `KHT Combined Report (${selected.length} sample)`,
+        );
+        if (!shared) toast("PDF berhasil dibuat.", "success");
       }
       exitSelection();
     } catch (e: any) {

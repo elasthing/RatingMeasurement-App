@@ -1,7 +1,5 @@
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 import { Check, Export, PencilSimple, TrashSimple, X } from "phosphor-react-native";
 import { useState } from "react";
 import {
@@ -27,7 +25,7 @@ import { useToast } from "@/src/components/Toast";
 import { TubeViewer } from "@/src/components/TubeViewer";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { fmtDateTime } from "@/src/utils/format";
-import { printHtmlOnWeb } from "@/src/utils/pdf-report";
+import { printHtmlOnWeb, sharePdfNative } from "@/src/utils/pdf-report";
 
 export default function Result() {
   const styles = useStyles();
@@ -164,12 +162,9 @@ export default function Result() {
       if (Platform.OS === "web") {
         printHtmlOnWeb(html);
       } else {
-        const { uri } = await Print.printToFileAsync({ html });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: "KHT Test Report" });
-        } else {
-          toast("PDF generated.", "success");
-        }
+        const stamp = new Date(test.created_at).toISOString().slice(0, 10);
+        const shared = await sharePdfNative(html, `KHT_Report_${test.meta.sample_id || test.id}_${stamp}`, "KHT Test Report");
+        if (!shared) toast("PDF generated.", "success");
       }
     } catch (e: any) {
       const msg = e?.message ? String(e.message).slice(0, 140) : "unknown error";

@@ -4,6 +4,10 @@
 // - `buildCombinedReportHtml`: cover page + one page per selected sample,
 //   used by the multi-select export flow on the History screen.
 
+import * as FileSystem from "expo-file-system/legacy";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+
 import { fileUrl, imageToDataUri, isClear, statusLabel, TestRecord } from "@/src/api";
 import { paramRows } from "@/src/components/ParameterTable";
 import { fmtDate, fmtDateTime } from "@/src/utils/format";
@@ -201,6 +205,34 @@ export async function buildCombinedReportHtml(tests: TestRecord[]): Promise<stri
     <title>KHT Combined Report</title>
     <style>${commonStyles()}${coverStyles()}</style>
   </head><body>${renderCoverPage(tests)}${pages}</body></html>`;
+}
+
+// Native (iOS/Android): render the report HTML to a PDF file and open the share
+// sheet. `Print.printToFileAsync` writes into a cache sub-folder that Android's
+// FileProvider may refuse to expose ("Not allowed to read file under given URL"),
+// so the PDF is first copied into the app's document directory under a readable
+// `file://` path with a meaningful file name.
+export async function sharePdfNative(html: string, fileName: string, dialogTitle: string): Promise<boolean> {
+  const { uri } = await Print.printToFileAsync({ html, base64: false });
+  const safe = fileName.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "KHT_Report";
+  const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? "";
+  let target = uri;
+  if (dir) {
+    const dest = `${dir}${safe}.pdf`;
+    try {
+      await FileSystem.deleteAsync(dest, { idempotent: true });
+      await FileSystem.copyAsync({ from: uri, to: dest });
+      target = dest;
+    } catch {
+      target = uri; // fall back to the original print output
+    }
+  }
+  if (!target.startsWith("file://")) target = `file://${target}`;
+  const info = await FileSystem.getInfoAsync(target);
+  if (!info.exists) throw new Error("File PDF tidak ditemukan setelah dibuat.");
+  if (!(await Sharing.isAvailableAsync())) return false;
+  await Sharing.shareAsync(target, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle });
+  return true;
 }
 
 // Web-only: print an arbitrary HTML document via a hidden iframe. On web
