@@ -2,7 +2,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
 
-export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+// On web, always call the API on the SAME origin that served the page. The
+// preview/deploy host proxies `/api/*` to the backend, so this keeps every
+// request same-origin (no CORS) even when the page is opened through an alias
+// host that differs from EXPO_PUBLIC_BACKEND_URL. Native builds have no
+// `window`, so they keep using the configured backend URL.
+function resolveBackendUrl(): string {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const origin = window.location?.origin ?? "";
+    if (/^https?:\/\//.test(origin) && !/localhost|127\.0\.0\.1/.test(origin)) return origin;
+  }
+  return process.env.EXPO_PUBLIC_BACKEND_URL ?? "";
+}
+
+export const BACKEND_URL = resolveBackendUrl();
 export const API = `${BACKEND_URL}/api`;
 
 export function fileUrl(path?: string | null): string {

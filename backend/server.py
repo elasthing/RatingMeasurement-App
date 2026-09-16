@@ -693,16 +693,17 @@ async def on_startup():
 
 
 app.include_router(api_router)
-# NOTE: `allow_origins=["*"]` together with `allow_credentials=True` produces an
-# invalid CORS response (ACAO "*" + ACAC "true") on actual (non-preflight)
-# requests. Safari/WebKit strictly rejects this -> "Load failed" on upload/analyze.
-# Using `allow_origin_regex=".*"` makes Starlette REFLECT the request Origin into
-# Access-Control-Allow-Origin for both preflight and actual responses, which is
-# valid CORS accepted by all browsers (Safari included).
+# NOTE: The edge proxy in front of this app REWRITES the browser's Origin header
+# (e.g. "*.preview.emergentagent.com" -> "*.cluster-N.preview.emergentcf.cloud").
+# Reflecting the (rewritten) Origin via `allow_origin_regex` therefore produced an
+# Access-Control-Allow-Origin that never matched the real page origin, and browsers
+# rejected every cross-origin POST ("Failed to fetch" on upload/analyze).
+# The API is cookie-less, so a plain wildcard without credentials is valid CORS
+# for every browser (Safari included) and immune to Origin rewriting.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

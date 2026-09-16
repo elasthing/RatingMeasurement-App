@@ -80,3 +80,7 @@
 - Gather user feedback on rating accuracy vs their standard reference samples.
 - Consider a "reference calibration" flow so the AI can be tuned to a lab's known-good tubes.
 - Deployment health check PASS: generated frontend/yarn.lock (removed package-lock.json), un-ignored .env in .gitignore, bundled Barlow Condensed + JetBrains Mono fonts in frontend/assets/fonts (loaded via require, no CDN).
+
+## Bug fix (Sep 2026): Upload foto "Failed to fetch"
+- Root cause: browser page origin ≠ EXPO_PUBLIC_BACKEND_URL host (cross-origin), dan edge proxy menulis ulang header Origin sehingga ACAO yang di-reflect backend tidak cocok → browser memblokir POST /api/upload dan preflight chunk.
+- Fix: (1) frontend web memakai `window.location.origin` sebagai base API (same-origin, tanpa CORS); (2) backend CORS `allow_origins=["*"]`, `allow_credentials=False`.
