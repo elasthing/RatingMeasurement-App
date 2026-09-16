@@ -1,0 +1,29 @@
+{
+  "summary": "Verified PDF export fixes (single Result + combined History). Both flows now emit HTML with `@page { margin: 0; size: A4 }`, correct `<title>` (KHT Report / KHT Combined Report), no `emergent.sh`/visible URLs in body, and use CLEAR/TARNISH badges + Clear/Tarnish cover stat labels (no PASS/FAIL). Optional page.pdf() rendering of the combined report produced a 333KB PDF (>5KB). Dashboard shows CLEAR/TARNISH stats; History filter chips are All/Clear/Tarnish and filter correctly (Clear filter shows 4 clear badges, 0 tarnish). One regression from the PASS/FAIL rename remains in the KHT reference scale legend: `FAILED · 0` still appears on Dashboard, Result screen, and inside the exported PDF's KHT scale references — should be `TARNISH · 0`.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "KHTScale legend", "issue": "Legend text 'FAILED · 0' still uses old FAIL wording. Should read 'TARNISH · 0' to match app-wide PASS→CLEAR / FAIL→TARNISH rename. Visible on Dashboard bottom (KHT STANDARD RATING REFERENCE), on Result page under the score bands, and inside exported PDFs (single & combined report scale sections if present). Reference: /app/frontend/src/components/KHTScale.tsx:40", "testID": "n/a", "priority": "MEDIUM"},
+      {"component": "theme.ts KHT bands", "issue": "Grade label 'FAILED' still hard-coded for the 0-1 band (score '0-1'). Should be 'TARNISH' for consistency. Reference: /app/frontend/src/theme.ts:96", "testID": "n/a", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/tmp/single_report.html", "/tmp/combined_report.html", "/tmp/combined_report.pdf"],
+  "action_items": [
+    "Rename 'FAILED · 0' → 'TARNISH · 0' in /app/frontend/src/components/KHTScale.tsx (line 40).",
+    "Rename band grade 'FAILED' → 'TARNISH' for the 0-1 band in /app/frontend/src/theme.ts (line 96) if this label is user-visible."
+  ],
+  "critical_code_review_comments": [
+    "Single-report HTML string in /app/frontend/app/result/[id].tsx (~130 lines of inline HTML/CSS) duplicates the single-page layout that could be centralized in /app/frontend/src/utils/pdf-report.ts to keep single/combined exports guaranteed in-sync. Not a blocker.",
+    "printHtmlOnWeb uses a 400ms setTimeout before calling print — usually fine but images with slow data URI decoding could still race. Consider iframe.onload before triggering print. Not a blocker."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "95% (all export/label assertions passed; 1 stale FAILED label regression)"},
+  "seed_data_creation": "None. Used existing 13 records from GET /api/tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test data lives under /app/backend + Mongo; 13 test records exist. Use record id '3d59e466-5372-4150-9f8e-9f1a95057a9b' (TARNISH) or a CLEAR id like '74663785-cfb2-4bcd-8344-c5cf40a6cdd8' to open /result/<id>. For print testing on web, override window.print via page.add_init_script BEFORE navigation; the print iframe is auto-removed ~1s after print — poll document.querySelectorAll('iframe') every ~100ms and read contentDocument.documentElement.outerHTML. Combined-report iframe HTML is huge (~380KB) so the check should filter by 'KHT Combined' string.",
+  "rca_of_issue": "Original bug: window.print() footer showed page URL (emergent.sh) in exported PDF. Root cause: default @page margins leave room for the browser's automatic header/footer (URL, title, date). Fix by dev: set `@page { margin: 0; size: A4 }` in both report HTML strings (single in result/[id].tsx, combined in pdf-report.ts) and compensate content padding on body/.page/.cover. Also added <title>KHT Report/KHT Combined Report so if any print engine still displays a title it is branded, not the app URL. Additionally moved Result-screen web printing to the shared printHtmlOnWeb() helper (hidden iframe) so it doesn't print the app DOM. Verified via headless Chromium: captured iframe HTML contains the expected @page rule/title, no emergent.sh, no http(s) text outside data URIs, badges use CLEAR/TARNISH, cover stats use Clear/Tarnish. Also confirmed the HTML renders to a valid PDF (333KB) via page.pdf(prefer_css_page_size=True, display_header_footer=False)."
+}

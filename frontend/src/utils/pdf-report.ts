@@ -20,9 +20,12 @@ const statusColor = (status: string) => (isClear(status) ? "#15803D" : "#C1220E"
 
 function commonStyles(): string {
   return `
+    /* Zero page margin removes the browser's automatic print header/footer
+       (page URL, title, date). Content padding is applied on .page/.cover instead. */
+    @page { margin: 0; size: A4; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { font-family: -apple-system, Helvetica, Arial, sans-serif; color: #0A1420; margin: 0; padding: 0; }
-    .page { padding: 28px 24px; page-break-after: always; }
+    .page { padding: 40px 32px; page-break-after: always; }
     .page:last-child { page-break-after: auto; }
     h1 { color: #0A1420; margin: 0; font-size: 22px; }
     h2 { color: #0A1420; margin: 0; font-size: 16px; }
@@ -47,7 +50,7 @@ function commonStyles(): string {
 
 function coverStyles(): string {
   return `
-    .cover { padding: 36px 28px; page-break-after: always; }
+    .cover { padding: 44px 36px; page-break-after: always; }
     .cover-hero { background: linear-gradient(135deg,#0A1420 0%, #112033 60%, #0E3342 100%); color: #fff; padding: 28px; border-radius: 12px; }
     .cover-hero .brand { color: #00D2D3; font-size: 12px; letter-spacing: 2px; font-weight: 700; }
     .cover-hero h1 { color: #fff; font-size: 26px; margin-top: 6px; }

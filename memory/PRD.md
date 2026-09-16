@@ -89,3 +89,7 @@
 - Backend: konstanta STATUS_CLEAR/STATUS_TARNISH, `normalize_status()` (menerima legacy PASS/FAIL dari AI/klien), prompt AI, NIKKO_LEVELS, seed, dashboard; migrasi otomatis saat startup (`update_many` PASS→CLEAR, FAIL→TARNISH).
 - Frontend: helper `isClear()/statusLabel()` di src/api.ts dipakai StatusBadge, Dashboard stat, History filter (Clear/Tarnish), Result detail, PDF single & combined (pdf-report.ts), TrendChart label.
 - Warna dipertahankan: CLEAR hijau (colors.success/#15803D), TARNISH merah (colors.error/#C1220E). Grade performa (EXCELLENT…FAILED) tidak diubah.
+
+## Bug fix (Sep 2026): URL di footer PDF
+- Root cause: browser menambahkan header/footer cetak (URL halaman, judul, tanggal) di area margin saat window.print().
+- Fix: `@page { margin: 0; size: A4 }` di HTML laporan tunggal (result/[id].tsx) & gabungan (pdf-report.ts), padding dipindah ke body/.page/.cover, <title> laporan ditambahkan; Result screen memakai printHtmlOnWeb bersama. Diverifikasi testing agent (iteration_8).

@@ -17,39 +17,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fileUrl, imageToDataUri, isClear, statusLabel, TestUpdate, useDeleteTest, useTest, useUpdateTest } from "@/src/api";
-
-// Web-only: print a specific HTML document in an isolated hidden iframe.
-// expo-print's web implementation just calls window.print(), which prints the
-// whole on-screen app DOM (including the on-screen "Edit" buttons). Printing our
-// generated report HTML inside an iframe keeps the PDF limited to the report.
-function printHtmlOnWeb(html: string) {
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-  document.body.appendChild(iframe);
-  const cw = iframe.contentWindow;
-  const doc = cw?.document;
-  if (!cw || !doc) {
-    iframe.remove();
-    return;
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-  setTimeout(() => {
-    try {
-      cw.focus();
-      cw.print();
-    } catch {
-      // ignore print errors
-    }
-    setTimeout(() => iframe.remove(), 1000);
-  }, 400);
-}
 import { Header } from "@/src/components/Header";
 import { KHTScale } from "@/src/components/KHTScale";
 import { ParameterTable, paramRows } from "@/src/components/ParameterTable";
@@ -60,6 +27,7 @@ import { useToast } from "@/src/components/Toast";
 import { TubeViewer } from "@/src/components/TubeViewer";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { fmtDateTime } from "@/src/utils/format";
+import { printHtmlOnWeb } from "@/src/utils/pdf-report";
 
 export default function Result() {
   const styles = useStyles();
@@ -155,9 +123,12 @@ export default function Result() {
         .join("");
       const scolor = isClear(test.status) ? "#15803D" : "#C1220E";
       const html = `
-        <html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
+        <html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+        <title>KHT Report ${test.meta.sample_id}</title>
         <style>
-          body{font-family:-apple-system,Helvetica,Arial;padding:24px;color:#0A1420}
+          @page{margin:0;size:A4}
+          *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+          body{font-family:-apple-system,Helvetica,Arial;margin:0;padding:40px 32px;color:#0A1420}
           h1{color:#0A1420;margin:0} .sub{color:#00898a;font-size:12px;letter-spacing:1px}
           .rating{font-size:64px;font-weight:800;color:${scolor}}
           table{width:100%;border-collapse:collapse;margin-top:12px}
