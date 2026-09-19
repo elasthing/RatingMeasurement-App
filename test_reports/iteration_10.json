@@ -1,0 +1,36 @@
+{
+  "summary": "Full backend + frontend verification of the new Rating DKA (batch tube) module and regression of KHT/Copper. Backend pytest: 25/25 passed (backend/tests/dka_test.py). All targeted DKA endpoints work: GET /api/dka/dashboard returns latest+total_batches+total_samples+distribution across the four categories {CLEAR, Aspect 1, Aspect 2, Aspect 3} with samples[] each having sample_id, rating, color, severity, crop_path; GET /api/dka/tests (+?q= search on batch_id / product / operator / samples.sample_id) returns records; GET /api/dka/tests/{id} returns one batch and 404s on unknown ids; GET /api/dka/trend returns ascending points with id, batch_id, avg_severity, count, created_at; GET /api/dka/reference-scale returns title, note, base64 data-URI image and exactly the four categories in order [CLEAR, Aspect 1, Aspect 2, Aspect 3]; PUT /api/dka/tests/{id} manual correction — {samples:[{index:1, rating:'Aspect 3'}]} correctly recomputes rating='Aspect 3', severity=3, color='#161616' and marks edited=true; {samples:[{index:2, sample_id:'ABC-9'}]} correctly updates sample_id; changes persist via GET; DELETE soft-deletes (list+GET both drop the record). DKA AI batch flow /api/upload -> /api/dka/analyze/start -> poll /api/dka/analyze/jobs/{id} on the real DKA standard photo (4 tubes) completed with status='done' in <~60s; the resulting record has samples[] (>=1), each with a valid rating in the DKA set, a non-empty sample_id (OCR text or 'Unknown N'), and a crop_path that is successfully served as an image by GET /api/files/{crop_path} (HTTP 200, content-type image/*). Missing-image start returns 404 and unknown-job returns 404. Regression: /api/dashboard, /api/tests, /api/copper/dashboard, /api/copper/tests still respond correctly post-refactor. Frontend Playwright (mobile viewport 390x844): HOME landing renders THREE module cards (testIDs module-kht, module-copper, module-dka); Rating DKA card shows the seeded stat '1 batch · 4 sampel' and tapping module-dka navigates to /dka. /dka Dashboard shows LATEST BATCH DKA-DEMO-BATCH with the 4-sample crop grid (crop image + sample id + coloured rating badge CLEAR/Aspect 1/Aspect 2/Aspect 3 + confidence %), the reference-scale link (testID dka-scale-link) opens /dka-scale which renders the DKA standard reference image + 4 category rows with 0..3 severity indicators. Bottom tabs (Dashboard, New Test, History, Trend) all render. New Test screen shows Camera + Gallery pickers (testID dka-pick-camera, dka-pick-gallery), the lighting/OCR tip box in Bahasa Indonesia, and Batch/Product/Operator/Temp/Duration/Remark inputs pre-filled with sensible defaults. History screen shows the batch row with rating badges (Aspect 3, Aspect 1, CLEAR, Aspect 3), search input, multi-select checkbox, and the EXPORT PDF action bar appears when selection mode is entered (design choice, verified). Trend screen renders the DKA batch severity chart (0-3 axis) + data point (DKA-DEMO-BATCH · 1.75 avg severity). DKA Result /dka-result/{id}: renders each of the 4 detected samples with its crop photo, an editable Sample ID (testID dka-sid-1..4) — successfully edited sample #1 to 'SID-TEST-UI' — and a 4-button rating picker (testID dka-rate-1-CLEAR / dka-rate-1-Aspect 1 / dka-rate-1-Aspect 2 / dka-rate-1-Aspect 3, and same for indices 2/3/4); clicking dka-rate-1-'Aspect 3' updates the badge instantly. EXPORT PDF button visible (testID dka-export-report-btn). No red screen, no console errors, no deprecated Expo packages detected (no expo-av, expo-barcode-scanner, expo-background-fetch).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/dka_test.py",
+    "/app/test_reports/pytest/dka_pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~1625 lines and hosts KHT + Copper + DKA modules. Strongly recommend splitting into /app/backend/routers/{kht,copper,dka}.py plus /app/backend/services/ai_vision.py to stay under the ~700-line guideline. Not a blocker — every endpoint works.",
+    "dka_category_for() falls back to 'CLEAR' for any unknown string. That is safe for manual corrections but may hide a bad AI response. Consider logging a warning when the fallback triggers.",
+    "_dka_build_samples() correctly falls back to _crop_column when bbox crop fails — good resilience. Uploaded crop_path is stored, and GET /api/files/{path} correctly serves it (verified 200 + content-type image/*).",
+    "PUT /dka/tests/{id} with samples but change.index that does not match is silently ignored (continue). Consider surfacing a 400 for callers that expect strict indices. Non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/dka_test.py (new)"
+  ],
+  "success_rate": {
+    "backend": "25/25 (100%)",
+    "frontend": "100% of tested flows (home 3-module nav, /dka dashboard + latest batch grid, tabs Dashboard/New Test/History/Trend, /dka-scale reference image + 4 categories, /dka-result editable sample_id + 4-button rating picker + export PDF button visible, seed data intact)"
+  },
+  "seed_data_creation": "Used the built-in DKA-DEMO-BATCH seed (4 samples DKA-2026-001..004 with ratings CLEAR/Aspect 1/Aspect 2/Aspect 3). During tests the PUT correction suite mutated indices 1/2/3 and left them as Aspect 3 / ABC-9 / CLEAR; TestDkaAIJobFlow created a TEST_DKA_BATCH_AI record via /api/upload -> /api/dka/analyze/start and cleaned it up with DELETE in the same suite.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend base URL comes from frontend/.env EXPO_PUBLIC_BACKEND_URL (loaded via python-dotenv). DKA endpoints: /api/dka/{dashboard,tests,tests/{id},trend,reference-scale,analyze/start,analyze/jobs/{id}}; category set is exactly {CLEAR, Aspect 1, Aspect 2, Aspect 3} (severity 0..3). Seed DKA-DEMO-BATCH is created only when dka_tests collection is empty. dka_test.py mutates seed sample #1/#2/#3 ratings & sample_ids — if you rerun the whole suite the seed will be in the mutated state; delete DKA-DEMO-BATCH from mongo (or drop dka_tests) between full reruns if you need the original ratings. Frontend testIDs of interest: module-dka, dka-scale-link, dka-view-report, dka-new-test-cta, dka-search, dka-select-all, dka-selection-enter/cancel, dka-check-{id}, dka-export-combined (only visible in selection mode), dka-pick-camera, dka-pick-gallery, dka-input-{batch-id,product,operator,temp,duration,remark}, dka-run-analysis, dka-editor-{n}, dka-sid-{n}, dka-rate-{n}-{code} (code = 'CLEAR' | 'Aspect 1' | 'Aspect 2' | 'Aspect 3'), dka-export-report-btn, dka-export-pdf. Bottom tabs on /dka: Dashboard, New Test, History, Trend (4 tabs). All UI text is Indonesian per product spec.",
+  "rca_of_issue": "N/A — feature verification for new Rating DKA module. All acceptance criteria in the review request are met."
+}

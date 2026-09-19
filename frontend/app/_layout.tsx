@@ -43,10 +43,13 @@ export default function RootLayout() {
                     <Stack.Screen name="index" />
                     <Stack.Screen name="kht" />
                     <Stack.Screen name="copper" />
+                    <Stack.Screen name="dka" />
                     <Stack.Screen name="result/[id]" />
                     <Stack.Screen name="copper-result/[id]" />
+                    <Stack.Screen name="dka-result/[id]" />
                     <Stack.Screen name="color-scale" />
                     <Stack.Screen name="copper-scale" />
+                    <Stack.Screen name="dka-scale" />
                     <Stack.Screen name="settings" options={{ presentation: "modal" }} />
                   </Stack>
                 </View>

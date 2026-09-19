@@ -581,3 +581,166 @@ export function useUpdateCopperTest() {
     },
   });
 }
+
+// ===========================================================================
+// MODULE: Rating DKA — batch (up to 4 tubes) + handwritten-label OCR
+// ===========================================================================
+export type DkaMeta = {
+  batch_id: string;
+  product: string;
+  operator: string;
+  temperature_c: number;
+  duration_hours: number;
+  remark: string;
+};
+
+export type DkaSample = {
+  index: number;
+  sample_id: string;
+  rating: string;
+  severity: number;
+  color: string;
+  description: string;
+  confidence: number;
+  summary: string;
+  crop_path: string;
+};
+
+export type DkaRecord = {
+  id: string;
+  image_path: string;
+  meta: DkaMeta;
+  samples: DkaSample[];
+  sample_count: number;
+  ai_model: string;
+  created_at: string;
+  edited?: boolean;
+  edited_at?: string | null;
+};
+
+export type DkaCategory = { code: string; color: string; severity: number; description: string };
+
+export type DkaDashboardData = {
+  latest: DkaRecord | null;
+  total_batches: number;
+  total_samples: number;
+  distribution: Record<string, number>;
+};
+
+export type DkaScaleData = {
+  title: string;
+  note: string;
+  image: string;
+  categories: DkaCategory[];
+  updated_at?: string;
+};
+
+export type DkaTrendPoint = { id: string; batch_id: string; avg_severity: number; count: number; created_at: string };
+
+export const DKA_CATEGORIES = ["CLEAR", "Aspect 1", "Aspect 2", "Aspect 3"];
+
+export function useDkaDashboard() {
+  return useQuery({ queryKey: ["dka-dashboard"], queryFn: () => getJSON<DkaDashboardData>(`${API}/dka/dashboard`) });
+}
+
+export function useDkaTests(q?: string) {
+  return useQuery({
+    queryKey: ["dka-tests", q ?? ""],
+    queryFn: () => getJSON<DkaRecord[]>(`${API}/dka/tests${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  });
+}
+
+export function useDkaTest(id: string) {
+  return useQuery({
+    queryKey: ["dka-test", id],
+    queryFn: () => getJSON<DkaRecord>(`${API}/dka/tests/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useDkaTrend() {
+  return useQuery({ queryKey: ["dka-trend"], queryFn: () => getJSON<DkaTrendPoint[]>(`${API}/dka/trend`) });
+}
+
+export function useDkaScale() {
+  return useQuery({ queryKey: ["dka-scale"], queryFn: () => getJSON<DkaScaleData>(`${API}/dka/reference-scale`) });
+}
+
+export type DkaAnalyzePayload = Partial<DkaMeta> & { image_path: string };
+
+export async function analyzeDkaWithPolling(payload: DkaAnalyzePayload, onTick?: (elapsedSec: number) => void) {
+  const startRes = await postJsonWithRetry(`${API}/dka/analyze/start`, payload);
+  if (!startRes.ok) {
+    const t = await startRes.text();
+    throw new Error(t || `Analysis failed: ${startRes.status}`);
+  }
+  const job = (await startRes.json()) as AnalyzeJob;
+  const started = Date.now();
+  const deadline = started + 6 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await sleep(2500);
+    onTick?.(Math.round((Date.now() - started) / 1000));
+    let st: AnalyzeJob | null = null;
+    try {
+      const r = await fetch(`${API}/dka/analyze/jobs/${job.id}`);
+      if (r.ok) st = (await r.json()) as AnalyzeJob;
+    } catch {
+      // transient — keep polling
+    }
+    if (!st) continue;
+    if (st.status === "done" && st.record_id) return getJSON<DkaRecord>(`${API}/dka/tests/${st.record_id}`);
+    if (st.status === "error") throw new Error(st.error || "AI Vision analysis failed.");
+  }
+  throw new Error("Analisa AI memakan waktu terlalu lama. Coba lagi dengan foto yang lebih kecil.");
+}
+
+function invalidateDka(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["dka-dashboard"] });
+  qc.invalidateQueries({ queryKey: ["dka-tests"] });
+  qc.invalidateQueries({ queryKey: ["dka-trend"] });
+}
+
+export function useAnalyzeDka(onTick?: (elapsedSec: number) => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: DkaAnalyzePayload) => analyzeDkaWithPolling(payload, onTick),
+    onSuccess: () => invalidateDka(qc),
+  });
+}
+
+export function useDeleteDka() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`${API}/dka/tests/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      return res.json();
+    },
+    onSuccess: () => invalidateDka(qc),
+  });
+}
+
+export type DkaSampleUpdate = { index: number; sample_id?: string; rating?: string };
+export type DkaUpdate = { samples?: DkaSampleUpdate[] };
+
+export function useUpdateDka() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, changes }: { id: string; changes: DkaUpdate }) => {
+      const res = await fetch(`${API}/dka/tests/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || `Update failed: ${res.status}`);
+      }
+      return (await res.json()) as DkaRecord;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["dka-test", data.id], data);
+      invalidateDka(qc);
+    },
+  });
+}

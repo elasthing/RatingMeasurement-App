@@ -978,6 +978,377 @@ async def copper_reference_scale():
     }
 
 
+# ===========================================================================
+# MODULE: Rating DKA — batch (up to 4 tubes / photo) + handwritten-label OCR
+# ===========================================================================
+# Status categories ARE the rating (no CLEAR/TARNISH pass-fail): CLEAR, Aspect 1,
+# Aspect 2, Aspect 3. `severity` (0 best .. 3 worst) is used for the trend chart.
+DKA_CATEGORIES = [
+    {"code": "CLEAR", "color": "#E3EAEC", "severity": 0, "description": "Tabung bening/jernih tanpa endapan."},
+    {"code": "Aspect 1", "color": "#C68A3E", "severity": 1, "description": "Endapan ringan, warna amber/cokelat muda."},
+    {"code": "Aspect 2", "color": "#6E3B18", "severity": 2, "description": "Endapan sedang–berat, warna cokelat gelap."},
+    {"code": "Aspect 3", "color": "#161616", "severity": 3, "description": "Endapan berat, warna hitam pekat."},
+]
+DKA_MAP = {c["code"].lower(): c for c in DKA_CATEGORIES}
+
+
+def dka_category_for(v) -> dict:
+    s = str(v or "").strip().lower()
+    if "clear" in s or s in ("0", "c", "bening"):
+        return DKA_MAP["clear"]
+    for n in ("3", "2", "1"):
+        if n in s:
+            return DKA_MAP["aspect " + n]
+    return DKA_MAP["clear"]
+
+
+DKA_REF_FILE = ROOT_DIR / "reference" / "dka_standard.jpg"
+_dka_ref_bytes: Optional[bytes] = None
+
+
+def dka_reference_bytes() -> bytes:
+    global _dka_ref_bytes
+    if _dka_ref_bytes is None:
+        with open(DKA_REF_FILE, "rb") as f:
+            _dka_ref_bytes = f.read()
+    return _dka_ref_bytes
+
+
+def dka_reference_b64() -> str:
+    return base64.b64encode(dka_reference_bytes()).decode("utf-8")
+
+
+DKA_PROMPT = (
+    "You are the RATING DKA batch inspection engine.\n\n"
+    "You are given TWO images:\n"
+    "1) The FIRST image is the official DKA standard reference. It shows FOUR reference tubes labelled, "
+    "from left to right: 'CLEAR' (colourless clean glass), 'Aspect 1' (light amber/brown), 'Aspect 2' "
+    "(dark brown), and 'Aspect 3' (black). Deposit gets darker/heavier from CLEAR to Aspect 3.\n"
+    "2) The SECOND image is the operator's SAMPLE photo which may contain UP TO 4 test tubes / beakers "
+    "placed side by side.\n\n"
+    "For the SECOND image, do ALL of the following:\n"
+    "a) Detect each individual tube separately, ordered LEFT to RIGHT (Sample 1, 2, 3, 4).\n"
+    "b) OCR the HANDWRITTEN text on the white label/sticker attached to each beaker and use it as sample_id. "
+    "If the handwriting is unreadable or there is no label, set sample_id to an empty string.\n"
+    "c) Rate each tube by visually comparing its deposit colour/darkness to the FIRST (standard) image and "
+    "assign exactly one of: 'CLEAR', 'Aspect 1', 'Aspect 2', 'Aspect 3'.\n"
+    "d) Give a tight normalized bounding box bbox=[x,y,w,h] (each 0.0–1.0, relative to the SECOND image) that "
+    "encloses that tube TOGETHER WITH its label so it can be cropped out.\n\n"
+    "Return ONLY a valid minified JSON object (no markdown) shaped exactly like:\n"
+    '{"samples":[{"index":1,"sample_id":"<ocr text or empty>","rating":"Aspect 2","confidence":<0-100>,'
+    '"bbox":[x,y,w,h],"summary":"<one short sentence in BAHASA INDONESIA citing the observed colour>"}]}\n'
+    "Include one object per detected tube (max 4), ordered left to right."
+)
+
+
+async def run_dka_vision(image_b64: str) -> dict:
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"dka-{uuid.uuid4()}",
+        system_message="You are a precise multi-object lab-tube inspection + handwriting OCR model that only outputs JSON.",
+    ).with_model("gemini", "gemini-3.1-pro-preview")
+    resp = await chat.send_message(
+        UserMessage(
+            text=DKA_PROMPT,
+            file_contents=[ImageContent(image_base64=dka_reference_b64()), ImageContent(image_base64=image_b64)],
+        )
+    )
+    return _parse_ai_json(resp if isinstance(resp, str) else str(resp))
+
+
+def _crop_bbox(content: bytes, bbox, pad: float = 0.02) -> bytes:
+    im = PILImage.open(io.BytesIO(content))
+    im = ImageOps.exif_transpose(im).convert("RGB")
+    W, H = im.size
+    x, y, w, h = [float(v) for v in bbox]
+    x0 = int(max(0.0, x - pad) * W)
+    y0 = int(max(0.0, y - pad) * H)
+    x1 = int(min(1.0, x + w + pad) * W)
+    y1 = int(min(1.0, y + h + pad) * H)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        raise ValueError("bbox too small")
+    out = io.BytesIO()
+    im.crop((x0, y0, x1, y1)).save(out, "JPEG", quality=92)
+    return out.getvalue()
+
+
+def _crop_column(content: bytes, i: int, n: int) -> bytes:
+    im = PILImage.open(io.BytesIO(content))
+    im = ImageOps.exif_transpose(im).convert("RGB")
+    W, H = im.size
+    n = max(1, n)
+    left = int(W * i / n)
+    right = int(W * (i + 1) / n)
+    out = io.BytesIO()
+    im.crop((left, 0, right, H)).save(out, "JPEG", quality=92)
+    return out.getvalue()
+
+
+def _dka_build_samples(content: bytes, raw: list) -> list:
+    """Sync (runs in threadpool): crop each detected tube from the ORIGINAL
+    full-res photo and upload the crop, returning sample dicts."""
+    def bx(s):
+        try:
+            return float(s.get("bbox", [0, 0, 0, 0])[0])
+        except Exception:
+            return 0.0
+
+    ordered = sorted(raw, key=bx) if raw else [{}]
+    ordered = ordered[:4] if len(ordered) > 4 else ordered
+    n = len(ordered)
+    samples = []
+    for i, s in enumerate(ordered):
+        cat = dka_category_for(s.get("rating"))
+        try:
+            crop_bytes = _crop_bbox(content, s.get("bbox"))
+        except Exception:
+            try:
+                crop_bytes = _crop_column(content, i, n)
+            except Exception:
+                crop_bytes = None
+        crop_path = ""
+        if crop_bytes:
+            try:
+                cp = f"{APP_NAME}/dka/{uuid.uuid4()}.jpg"
+                put_object(cp, crop_bytes, "image/jpeg")
+                crop_path = cp
+            except Exception:
+                crop_path = ""
+        sid = str(s.get("sample_id", "")).strip() or f"Unknown {i + 1}"
+        samples.append({
+            "index": i + 1, "sample_id": sid, "rating": cat["code"], "severity": cat["severity"],
+            "color": cat["color"], "description": cat["description"],
+            "confidence": _clamp(s.get("confidence"), 0, 100), "summary": str(s.get("summary", "")),
+            "crop_path": crop_path,
+        })
+    return samples
+
+
+class DkaMeta(BaseModel):
+    batch_id: str = ""
+    product: str = ""
+    operator: str = ""
+    temperature_c: float = 320
+    duration_hours: float = 16
+    remark: str = ""
+
+
+class DkaSample(BaseModel):
+    index: int = 1
+    sample_id: str = ""
+    rating: str = "CLEAR"
+    severity: float = 0
+    color: str = "#E3EAEC"
+    description: str = ""
+    confidence: float = 0
+    summary: str = ""
+    crop_path: str = ""
+
+
+class DkaAnalyzeRequest(DkaMeta):
+    image_path: str
+
+
+class DkaRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    image_path: str
+    meta: DkaMeta
+    samples: List[DkaSample] = Field(default_factory=list)
+    sample_count: int = 0
+    ai_model: str = "gemini-3.1-pro-preview"
+    created_at: str = Field(default_factory=now_iso)
+    edited: bool = False
+    edited_at: Optional[str] = None
+    deleted_at: Optional[str] = None
+
+
+class DkaSampleUpdate(BaseModel):
+    index: int
+    sample_id: Optional[str] = None
+    rating: Optional[str] = None
+
+
+class DkaUpdate(BaseModel):
+    samples: Optional[List[DkaSampleUpdate]] = None
+
+
+async def _analyze_dka(req: DkaAnalyzeRequest) -> DkaRecord:
+    try:
+        content, _ = await run_in_threadpool(get_object, req.image_path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found in storage")
+    small = await run_in_threadpool(_downscale_for_ai, content, 2200)
+    b64 = base64.b64encode(small).decode("utf-8")
+    try:
+        ai = await run_dka_vision(b64)
+    except Exception as e:
+        logger.exception("DKA AI vision failed")
+        raise HTTPException(status_code=502, detail=f"AI Vision analysis failed: {e}")
+    raw = ai.get("samples") if isinstance(ai, dict) else None
+    sample_dicts = await run_in_threadpool(_dka_build_samples, content, raw or [])
+    record = DkaRecord(
+        image_path=req.image_path,
+        meta=DkaMeta(**req.model_dump(exclude={"image_path"})),
+        samples=[DkaSample(**s) for s in sample_dicts],
+        sample_count=len(sample_dicts),
+    )
+    await db.dka_tests.insert_one(record.model_dump())
+    return record
+
+
+class DkaJob(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    status: str = "running"
+    record_id: Optional[str] = None
+    error: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+    finished_at: Optional[str] = None
+
+
+async def _run_dka_job(job_id: str, req: DkaAnalyzeRequest):
+    try:
+        record = await _analyze_dka(req)
+        await db.dka_jobs.update_one(
+            {"id": job_id}, {"$set": {"status": "done", "record_id": record.id, "finished_at": now_iso()}}
+        )
+    except HTTPException as e:
+        await db.dka_jobs.update_one(
+            {"id": job_id}, {"$set": {"status": "error", "error": str(e.detail), "finished_at": now_iso()}}
+        )
+    except Exception as e:
+        logger.exception("dka analyze job failed")
+        await db.dka_jobs.update_one(
+            {"id": job_id}, {"$set": {"status": "error", "error": str(e), "finished_at": now_iso()}}
+        )
+
+
+@api_router.post("/dka/analyze/start", response_model=DkaJob)
+async def dka_analyze_start(req: DkaAnalyzeRequest):
+    try:
+        await run_in_threadpool(get_object, req.image_path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found in storage")
+    job = DkaJob()
+    await db.dka_jobs.insert_one(job.model_dump())
+    asyncio.create_task(_run_dka_job(job.id, req))
+    return job
+
+
+@api_router.get("/dka/analyze/jobs/{job_id}", response_model=DkaJob)
+async def dka_job_status(job_id: str):
+    doc = await db.dka_jobs.find_one({"id": job_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return DkaJob(**doc)
+
+
+@api_router.get("/dka/tests", response_model=List[DkaRecord])
+async def dka_list(q: Optional[str] = None):
+    query: dict = {"deleted_at": None}
+    if q:
+        query["$or"] = [
+            {"meta.batch_id": {"$regex": q, "$options": "i"}},
+            {"meta.product": {"$regex": q, "$options": "i"}},
+            {"meta.operator": {"$regex": q, "$options": "i"}},
+            {"samples.sample_id": {"$regex": q, "$options": "i"}},
+        ]
+    docs = await db.dka_tests.find(query).sort("created_at", -1).to_list(500)
+    return [DkaRecord(**d) for d in docs]
+
+
+@api_router.get("/dka/tests/{test_id}", response_model=DkaRecord)
+async def dka_get(test_id: str):
+    doc = await db.dka_tests.find_one({"id": test_id, "deleted_at": None})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return DkaRecord(**doc)
+
+
+@api_router.put("/dka/tests/{test_id}", response_model=DkaRecord)
+async def dka_update(test_id: str, upd: DkaUpdate):
+    doc = await db.dka_tests.find_one({"id": test_id, "deleted_at": None})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+    record = DkaRecord(**doc)
+    if upd.samples:
+        by_index = {s.index: s for s in record.samples}
+        for change in upd.samples:
+            s = by_index.get(change.index)
+            if not s:
+                continue
+            if change.sample_id is not None:
+                s.sample_id = change.sample_id.strip() or s.sample_id
+            if change.rating is not None:
+                cat = dka_category_for(change.rating)
+                s.rating = cat["code"]
+                s.severity = cat["severity"]
+                s.color = cat["color"]
+                s.description = cat["description"]
+    await db.dka_tests.update_one(
+        {"id": test_id},
+        {"$set": {"samples": [s.model_dump() for s in record.samples], "edited": True, "edited_at": now_iso()}},
+    )
+    doc = await db.dka_tests.find_one({"id": test_id})
+    return DkaRecord(**doc)
+
+
+@api_router.delete("/dka/tests/{test_id}")
+async def dka_delete(test_id: str):
+    res = await db.dka_tests.update_one({"id": test_id}, {"$set": {"deleted_at": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return {"ok": True}
+
+
+@api_router.get("/dka/dashboard")
+async def dka_dashboard():
+    docs = await db.dka_tests.find({"deleted_at": None}).sort("created_at", -1).to_list(500)
+    records = [DkaRecord(**d) for d in docs]
+    dist = {c["code"]: 0 for c in DKA_CATEGORIES}
+    total_samples = 0
+    for r in records:
+        for s in r.samples:
+            total_samples += 1
+            if s.rating in dist:
+                dist[s.rating] += 1
+    return {
+        "latest": records[0].model_dump() if records else None,
+        "total_batches": len(records),
+        "total_samples": total_samples,
+        "distribution": dist,
+    }
+
+
+@api_router.get("/dka/trend")
+async def dka_trend():
+    docs = await db.dka_tests.find({"deleted_at": None}).sort("created_at", 1).to_list(500)
+    records = [DkaRecord(**d) for d in docs]
+    out = []
+    for r in records:
+        sev = [s.severity for s in r.samples]
+        avg = round(sum(sev) / len(sev), 2) if sev else 0
+        out.append({
+            "id": r.id, "batch_id": r.meta.batch_id or r.id[:8], "avg_severity": avg,
+            "count": len(r.samples), "created_at": r.created_at,
+        })
+    return out
+
+
+@api_router.get("/dka/reference-scale")
+async def dka_reference_scale():
+    doc = await db.reference.find_one({"key": "dka_standard"})
+    if not doc:
+        await seed_dka_reference()
+        doc = await db.reference.find_one({"key": "dka_standard"})
+    return {
+        "title": doc.get("title", "DKA Standard"),
+        "note": doc.get("note", ""),
+        "image": f"data:{doc.get('content_type', 'image/jpeg')};base64,{doc['image_base64']}",
+        "categories": doc.get("categories", DKA_CATEGORIES),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Seed demo data
 # ---------------------------------------------------------------------------
@@ -1126,6 +1497,71 @@ async def seed_copper_reference():
         logger.warning("seed_copper_reference failed: %s", e)
 
 
+async def seed_dka_reference():
+    try:
+        doc = {
+            "key": "dka_standard",
+            "title": "DKA Standard Reference",
+            "note": "Kategori (kiri→kanan): CLEAR · Aspect 1 · Aspect 2 · Aspect 3. Status hasil memakai nama kategori langsung.",
+            "content_type": "image/jpeg",
+            "image_base64": dka_reference_b64(),
+            "categories": DKA_CATEGORIES,
+            "updated_at": now_iso(),
+        }
+        await db.reference.replace_one({"key": "dka_standard"}, doc, upsert=True)
+    except Exception as e:
+        logger.warning("seed_dka_reference failed: %s", e)
+
+
+async def seed_dka():
+    if await db.dka_tests.count_documents({}) > 0:
+        return
+    logger.info("Seeding demo DKA batch...")
+    try:
+        content = dka_reference_bytes()
+    except Exception as e:
+        logger.warning("DKA seed skipped (no reference image): %s", e)
+        return
+    ids = ["DKA-2026-001", "DKA-2026-002", "DKA-2026-003", "DKA-2026-004"]
+    summaries = [
+        "Tabung bening tanpa endapan, cocok dengan kategori CLEAR.",
+        "Endapan ringan warna amber muda, cocok dengan Aspect 1.",
+        "Endapan cokelat gelap cukup tebal, cocok dengan Aspect 2.",
+        "Endapan hitam pekat menutupi tabung, cocok dengan Aspect 3.",
+    ]
+    samples = []
+
+    def _seed_crop(i):
+        try:
+            crop_bytes = _crop_column(content, i, 4)
+            cp = f"{APP_NAME}/dka/{uuid.uuid4()}.jpg"
+            put_object(cp, crop_bytes, "image/jpeg")
+            return cp
+        except Exception:
+            return ""
+
+    for i, cat in enumerate(DKA_CATEGORIES):
+        crop_path = await run_in_threadpool(_seed_crop, i)
+        samples.append(DkaSample(
+            index=i + 1, sample_id=ids[i], rating=cat["code"], severity=cat["severity"],
+            color=cat["color"], description=cat["description"], confidence=96 - i, summary=summaries[i],
+            crop_path=crop_path,
+        ))
+    # Upload the full reference photo as the batch image too.
+    try:
+        full_path = f"{APP_NAME}/dka/{uuid.uuid4()}.jpg"
+        await run_in_threadpool(put_object, full_path, content, "image/jpeg")
+    except Exception:
+        full_path = ""
+    rec = DkaRecord(
+        image_path=full_path,
+        meta=DkaMeta(batch_id="DKA-DEMO-BATCH", product="Engine Oil SAE 15W-40", operator="Karis Setia",
+                     temperature_c=320, duration_hours=16),
+        samples=samples, sample_count=len(samples),
+    )
+    await db.dka_tests.insert_one(rec.model_dump())
+
+
 @app.on_event("startup")
 async def on_startup():
     try:
@@ -1141,6 +1577,10 @@ async def on_startup():
     except Exception as e:
         logger.warning("Copper reference seed failed: %s", e)
     try:
+        await seed_dka_reference()
+    except Exception as e:
+        logger.warning("DKA reference seed failed: %s", e)
+    try:
         await seed()
     except Exception as e:
         logger.warning("Seed failed: %s", e)
@@ -1148,6 +1588,10 @@ async def on_startup():
         await seed_copper()
     except Exception as e:
         logger.warning("Copper seed failed: %s", e)
+    try:
+        await seed_dka()
+    except Exception as e:
+        logger.warning("DKA seed failed: %s", e)
     try:
         # One-time relabel of legacy records: PASS -> CLEAR, FAIL -> TARNISH.
         for old, new in LEGACY_STATUS.items():

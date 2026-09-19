@@ -120,3 +120,13 @@ Aplikasi diubah menjadi suite dua modul dengan Beranda pemilih modul.
 - **Responsif**: konten Beranda & semua layar Copper dibungkus `maxWidth: 760, alignSelf: center` agar rapi di laptop, tetap penuh di HP.
 - **Verifikasi**: testing_agent — semua endpoint Copper + regresi KHT PASS; alur frontend Beranda/Copper dashboard/history/trend/result/scale + KHT masih jalan. Tidak ada bug fungsional. Lint bersih.
 
+## Ganti gambar Copper (Jun 2026)
+- Chart ASTM D130 yang di-generate diganti dengan foto standar yang diunggah user (`backend/reference/astm_d130.jpg`). `copper_reference_bytes()` membaca file bila ada, fallback ke generate. Dipakai untuk tampilan `/copper-scale` DAN sebagai gambar acuan AI. Re-seed otomatis saat startup.
+
+## Modul ke-3 (Jun 2026): Rating DKA — batch 4 tabung + OCR label
+- **Konsep**: satu foto berisi hingga 4 tabung. AI mendeteksi tiap tabung kiri→kanan, OCR label tulisan tangan (putih) sebagai Sample ID (bila tak terbaca → "Unknown N"), lalu rating tiap tabung per standar DKA. **Status = nama kategori langsung** (bukan CLEAR/TARNISH pass-fail): CLEAR, Aspect 1, Aspect 2, Aspect 3 (severity 0-3, warna swatch).
+- **Gambar acuan**: `backend/reference/dka_standard.jpg` (unggahan user) = satu-satunya acuan AI, di-seed ke `reference` key `dka_standard`.
+- **Backend (server.py)**: koleksi `dka_tests` + `dka_jobs`. Prompt AI kirim standar + foto sampel, minta JSON `{samples:[{index,sample_id,rating,confidence,bbox,summary}]}` (bbox ternormalisasi). Backend meng-crop tiap tabung dari foto ASLI full-res (`_crop_bbox`, fallback `_crop_column`), unggah tiap crop (`kht-ai-vision/dka/*`) → `crop_path`. Downscale AI dinaikkan ke 2200px agar tulisan tangan tetap tajam. Endpoint `/api/dka/{dashboard,tests(+q),tests/{id} GET/PUT/DELETE,trend,reference-scale,analyze/start,analyze/jobs/{id}}`. PUT = koreksi manual per-sample (rating & sample_id, recompute severity/color). 1 batch demo di-seed (DKA-DEMO-BATCH, 4 sampel CLEAR/Aspect 1/2/3 dari 4 kolom gambar standar).
+- **Frontend**: aksen biru (colors.info). Rute `app/dka/*` (tabs), `app/dka-result/[id]` (grid sampel + editor Sample ID + picker rating 4 kategori + export PDF + delete), `app/dka-scale`. Komponen: `DkaBadge`, `DkaSampleCard`, `DkaTrendChart`. PDF `src/utils/dka-pdf.ts` = 1 halaman/batch (tabel ringkasan 4 sampel + thumbnail, `@page{margin:0}` tanpa URL). New Test: Camera+Gallery resolusi tinggi (tanpa crop editor, karena butuh seluruh 4 tabung) + tip pencahayaan/OCR. Kartu modul ke-3 ditambah di Beranda.
+- **Verifikasi**: testing_agent — 25/25 tes backend PASS termasuk alur AI batch live dengan gambar 4 tabung asli (crop tersaji via /api/files), regresi KHT+Copper OK, semua alur frontend jalan. Tanpa bug. Lint bersih.
+

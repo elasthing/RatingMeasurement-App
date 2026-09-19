@@ -1,9 +1,9 @@
 import { useRouter } from "expo-router";
-import { ArrowRight, Coins, Flask, ShieldCheck } from "phosphor-react-native";
+import { ArrowRight, Coins, Drop, Flask, ShieldCheck } from "phosphor-react-native";
 import { ScrollView, Text, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useCopperDashboard, useDashboard } from "@/src/api";
+import { useCopperDashboard, useDashboard, useDkaDashboard } from "@/src/api";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 export default function Home() {
@@ -13,6 +13,7 @@ export default function Home() {
   const insets = useSafeAreaInsets();
   const kht = useDashboard();
   const copper = useCopperDashboard();
+  const dka = useDkaDashboard();
 
   return (
     <View style={styles.screen}>
@@ -59,6 +60,20 @@ export default function Home() {
             desc="Klasifikasi korosi tembaga 1a–4c dengan status CLEAR / TARNISH."
             stat={`${copper.data?.total ?? 0} sampel · ${copper.data?.passed ?? 0} clear`}
             onPress={() => router.push("/copper")}
+          />
+
+          {/* Rating DKA */}
+          <ModuleCard
+            testID="module-dka"
+            accent={colors.info}
+            onAccent={colors.onInfo}
+            tile="#122A4A"
+            icon={<Drop size={30} color={colors.info} weight="fill" />}
+            title="Rating DKA"
+            subtitle="Batch 4 sampel · OCR label + AI Vision"
+            desc="Deteksi 4 tabung sekaligus, baca kode sampel, rating CLEAR / Aspect 1–3."
+            stat={`${dka.data?.total_batches ?? 0} batch · ${dka.data?.total_samples ?? 0} sampel`}
+            onPress={() => router.push("/dka")}
           />
 
           <Text style={styles.footer}>AI Vision powered by Gemini · © 2026</Text>
