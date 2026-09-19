@@ -99,7 +99,7 @@ const useStyles = makeStyles((c) => ({
   helper: { fontFamily: fonts.mono, fontSize: 11, color: c.onSurfaceTertiary, lineHeight: 17, marginTop: spacing.sm },
   note: { fontFamily: fonts.mono, fontSize: 11, color: c.onSurfaceSecondary, lineHeight: 17, marginTop: spacing.md },
   imageWrap: { marginTop: spacing.md, borderRadius: radius.md, overflow: "hidden", borderWidth: 1, borderColor: c.border, backgroundColor: "#F4F1EC" },
-  boardImage: { width: "100%", aspectRatio: 2.2, backgroundColor: "#F4F1EC" },
+  boardImage: { width: "100%", aspectRatio: 1.667, backgroundColor: "#F4F1EC" },
   row: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: c.divider, gap: spacing.md },
   swatch: { width: 52, height: 52, borderRadius: 8, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
   swatchNum: { fontFamily: fonts.display, fontSize: 20 },

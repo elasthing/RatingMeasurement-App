@@ -698,12 +698,19 @@ def generate_copper_reference() -> bytes:
 
 
 _copper_ref_bytes: Optional[bytes] = None
+COPPER_REF_FILE = ROOT_DIR / "reference" / "astm_d130.jpg"
 
 
 def copper_reference_bytes() -> bytes:
+    """Prefer the bundled official ASTM D130 / IP 154 chart photo; fall back to
+    the generated chart only if the file is missing."""
     global _copper_ref_bytes
     if _copper_ref_bytes is None:
-        _copper_ref_bytes = generate_copper_reference()
+        if COPPER_REF_FILE.exists():
+            with open(COPPER_REF_FILE, "rb") as f:
+                _copper_ref_bytes = f.read()
+        else:
+            _copper_ref_bytes = generate_copper_reference()
     return _copper_ref_bytes
 
 
