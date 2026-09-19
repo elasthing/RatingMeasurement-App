@@ -19,7 +19,7 @@ try:
 except Exception:
     pass
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://tube-test-app.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://elastic-analyst.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 # --- Real (non-blank) JPEG image with visual features -----------------------
