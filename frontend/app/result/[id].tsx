@@ -203,7 +203,7 @@ export default function Result() {
       {isError ? (
         <View style={styles.center}>
           <Text style={styles.errText}>Test record not found.</Text>
-          <Pressable style={styles.backHome} onPress={() => router.replace("/")} testID="result-go-home">
+          <Pressable style={styles.backHome} onPress={() => router.replace("/kht")} testID="result-go-home">
             <Text style={styles.backHomeText}>BACK TO DASHBOARD</Text>
           </Pressable>
         </View>

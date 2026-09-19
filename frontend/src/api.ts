@@ -396,3 +396,188 @@ export function useUpdateTest() {
     },
   });
 }
+
+// ===========================================================================
+// MODULE: Copper Strip Corrosion — ASTM D130 / IP 154
+// ===========================================================================
+export type CopperMeta = {
+  sample_id: string;
+  product: string;
+  batch: string;
+  operator: string;
+  temperature_c: number;
+  duration_hours: number;
+  remark: string;
+};
+
+export type CopperRecord = {
+  id: string;
+  image_path: string;
+  meta: CopperMeta;
+  classification: string;
+  class_label: string;
+  group: string;
+  color: string;
+  description: string;
+  severity: number;
+  confidence: number;
+  status: string;
+  ai_summary: string;
+  recommendation: string;
+  ai_model: string;
+  created_at: string;
+  edited?: boolean;
+  edited_at?: string | null;
+};
+
+export type CopperClass = {
+  code: string;
+  label: string;
+  group: string;
+  color: string;
+  description: string;
+  severity: number;
+  status: string;
+};
+
+export type CopperDashboardData = {
+  latest: CopperRecord | null;
+  total: number;
+  passed: number;
+  failed: number;
+};
+
+export type CopperScaleData = {
+  title: string;
+  note: string;
+  image: string; // base64 data URI
+  classes: CopperClass[];
+  updated_at?: string;
+};
+
+export type CopperTrendPoint = {
+  id: string;
+  classification: string;
+  severity: number;
+  status: string;
+  sample_id: string;
+  created_at: string;
+};
+
+export function useCopperDashboard() {
+  return useQuery({
+    queryKey: ["copper-dashboard"],
+    queryFn: () => getJSON<CopperDashboardData>(`${API}/copper/dashboard`),
+  });
+}
+
+export function useCopperTests(q?: string) {
+  return useQuery({
+    queryKey: ["copper-tests", q ?? ""],
+    queryFn: () => getJSON<CopperRecord[]>(`${API}/copper/tests${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  });
+}
+
+export function useCopperTest(id: string) {
+  return useQuery({
+    queryKey: ["copper-test", id],
+    queryFn: () => getJSON<CopperRecord>(`${API}/copper/tests/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCopperTrend() {
+  return useQuery({
+    queryKey: ["copper-trend"],
+    queryFn: () => getJSON<CopperTrendPoint[]>(`${API}/copper/trend`),
+  });
+}
+
+export function useCopperScale() {
+  return useQuery({ queryKey: ["copper-scale"], queryFn: () => getJSON<CopperScaleData>(`${API}/copper/reference-scale`) });
+}
+
+export type CopperAnalyzePayload = Partial<CopperMeta> & { image_path: string };
+
+export async function analyzeCopperWithPolling(payload: CopperAnalyzePayload, onTick?: (elapsedSec: number) => void) {
+  const startRes = await postJsonWithRetry(`${API}/copper/analyze/start`, payload);
+  if (!startRes.ok) {
+    const t = await startRes.text();
+    throw new Error(t || `Analysis failed: ${startRes.status}`);
+  }
+  const job = (await startRes.json()) as AnalyzeJob;
+  const started = Date.now();
+  const deadline = started + 6 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await sleep(2500);
+    onTick?.(Math.round((Date.now() - started) / 1000));
+    let st: AnalyzeJob | null = null;
+    try {
+      const r = await fetch(`${API}/copper/analyze/jobs/${job.id}`);
+      if (r.ok) st = (await r.json()) as AnalyzeJob;
+    } catch {
+      // transient network error — keep polling
+    }
+    if (!st) continue;
+    if (st.status === "done" && st.record_id) {
+      return getJSON<CopperRecord>(`${API}/copper/tests/${st.record_id}`);
+    }
+    if (st.status === "error") throw new Error(st.error || "AI Vision analysis failed.");
+  }
+  throw new Error("Analisa AI memakan waktu terlalu lama. Coba lagi dengan foto yang lebih kecil.");
+}
+
+function invalidateCopper(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["copper-dashboard"] });
+  qc.invalidateQueries({ queryKey: ["copper-tests"] });
+  qc.invalidateQueries({ queryKey: ["copper-trend"] });
+}
+
+export function useAnalyzeCopper(onTick?: (elapsedSec: number) => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CopperAnalyzePayload) => analyzeCopperWithPolling(payload, onTick),
+    onSuccess: () => invalidateCopper(qc),
+  });
+}
+
+export function useDeleteCopperTest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`${API}/copper/tests/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      return res.json();
+    },
+    onSuccess: () => invalidateCopper(qc),
+  });
+}
+
+export type CopperUpdate = Partial<{
+  classification: string;
+  status: string;
+  ai_summary: string;
+  recommendation: string;
+}>;
+
+export function useUpdateCopperTest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, changes }: { id: string; changes: CopperUpdate }) => {
+      const res = await fetch(`${API}/copper/tests/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || `Update failed: ${res.status}`);
+      }
+      return (await res.json()) as CopperRecord;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["copper-test", data.id], data);
+      invalidateCopper(qc);
+    },
+  });
+}

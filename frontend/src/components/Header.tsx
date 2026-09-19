@@ -10,12 +10,14 @@ export function Header({
   subtitle,
   showBack,
   showSettings,
+  logo = "KHT",
   right,
 }: {
   title: string;
   subtitle?: string;
   showBack?: boolean;
   showSettings?: boolean;
+  logo?: string;
   right?: React.ReactNode;
 }) {
   const styles = useStyles();
@@ -32,7 +34,7 @@ export function Header({
           </Pressable>
         ) : (
           <View style={styles.logoMark}>
-            <Text style={styles.logoText}>KHT</Text>
+            <Text style={styles.logoText}>{logo}</Text>
           </View>
         )}
         <View style={{ flex: 1, marginLeft: spacing.md }}>

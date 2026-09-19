@@ -21,7 +21,7 @@ export default function Dashboard() {
 
   return (
     <View style={styles.screen}>
-      <Header title="KHT AI VISION" subtitle="Komatsu Hot Tube Tester" showSettings />
+      <Header title="K-HTT ANALYST" subtitle="Komatsu Hot Tube Tester" showBack showSettings />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {isLoading ? (
           <View style={styles.center}>
@@ -33,7 +33,7 @@ export default function Dashboard() {
             <Flask size={48} color={colors.muted} weight="fill" />
             <Text style={styles.emptyTitle}>No tests yet</Text>
             <Text style={styles.dim}>Run your first AI Vision analysis to see results here.</Text>
-            <Pressable style={styles.cta} onPress={() => router.push("/new-test")} testID="dashboard-new-test">
+            <Pressable style={styles.cta} onPress={() => router.push("/kht/new-test")} testID="dashboard-new-test">
               <Text style={styles.ctaText}>RUN NEW TEST</Text>
             </Pressable>
             <Pressable

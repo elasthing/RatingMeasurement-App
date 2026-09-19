@@ -110,3 +110,13 @@
 ## Fix v2 (Sep 2026): Share PDF di HP (Expo Go Android)
 - Root cause: expo-print menulis PDF ke cacheDir host (Expo Go) di luar scoped dir → FilePermission scoped menolak READ, sehingga shareAsync DAN copyAsync gagal (fallback sebelumnya diam-diam memakai uri asli).
 - Fix: `printToFileAsync({ base64: true })` → `writeAsStringAsync(documentDirectory/<nama>.pdf, base64)` → shareAsync dari documentDirectory. Tidak pernah membaca path terbatas.
+
+## Major update (Jun 2026): Multi-modul (Web & Mobile) + Copper Strip ASTM D130
+Aplikasi diubah menjadi suite dua modul dengan Beranda pemilih modul.
+- **Navigasi**: `app/index.tsx` = Beranda (2 kartu modul: K-HTT ANALYST & Copper Strip ASTM D130). Tab KHT lama dipindah dari `app/(tabs)` → `app/kht/*` (rute `/kht`). Modul baru `app/copper/*` (rute `/copper`) dengan tab Dashboard/New Test/History/Trend. Result: `/result/[id]` (KHT) & `/copper-result/[id]` (Copper). Referensi: `/color-scale` (Nikko) & `/copper-scale` (ASTM D130). Root Stack di `_layout.tsx` didaftarkan ulang.
+- **Backend Copper (server.py)**: koleksi Mongo baru `copper_tests` + `copper_jobs`. Metadata 13 kelas `ASTM_D130_CLASSES` (0/Freshly Polished, 1a-1b Slight, 2a-3a Moderate, 3b-3c Dark, 4a-4c Corrosion) + severity 0-12. CLEAR (lulus) = {0,1a,1b}, sisanya TARNISH. Chart standar ASTM D130/IP 154 di-generate dengan PIL (`generate_copper_reference`) lalu di-seed ke `reference` (key `astm_d130_scale`). AI Vision reuse Gemini (`gemini-3.1-pro-preview`) via Emergent LLM key — kirim chart standar + foto sampel, output JSON {classification, confidence, status, summary(ID), recommendation(ID)}.
+- **Endpoint**: `/api/copper/{dashboard,tests(+q),tests/{id} GET/PUT/DELETE,trend,reference-scale,analyze/start,analyze/jobs/{id}}`. PUT untuk koreksi kelas manual (recompute group/color/severity/status). Upload reuse `/api/upload`(+chunk). 4 demo copper record di-seed (1a/1b/2c/4b).
+- **Frontend Copper**: aksen warna amber (brandSecondary). Komponen baru: `CopperClassGauge`, `CopperHistoryCard`, `CopperTrendChart`, `CopperClassPicker`. PDF via `src/utils/copper-pdf.ts` (single + combined, `@page{margin:0}` → tanpa URL footer; native pakai `sharePdfNative` expo-file-system yg sama). New Test: Camera + Gallery + Crop (IP WebCam DITUNDA per user). Result: koreksi kelas manual + edit deskripsi/rekomendasi + export PDF + delete.
+- **Responsif**: konten Beranda & semua layar Copper dibungkus `maxWidth: 760, alignSelf: center` agar rapi di laptop, tetap penuh di HP.
+- **Verifikasi**: testing_agent — semua endpoint Copper + regresi KHT PASS; alur frontend Beranda/Copper dashboard/history/trend/result/scale + KHT masih jalan. Tidak ada bug fungsional. Lint bersih.
+

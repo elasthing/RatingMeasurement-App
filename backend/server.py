@@ -18,7 +18,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, BeforeValidator
 from dotenv import load_dotenv
-from PIL import Image as PILImage, ImageOps
+from PIL import Image as PILImage, ImageOps, ImageDraw, ImageFont
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
@@ -609,6 +609,368 @@ async def color_scale():
     }
 
 
+# ===========================================================================
+# MODULE: Copper Strip Corrosion — ASTM D130 / IP 154
+# ===========================================================================
+# Classification (best -> worst). CLEAR (pass) = Freshly Polished / 1a / 1b;
+# everything from 2a onwards = TARNISH. `severity` (0 best .. 12 worst) is used
+# for the trend chart. Colours approximate each standard descriptor.
+ASTM_D130_CLASSES = [
+    {"code": "0", "label": "Freshly Polished", "group": "Freshly Polished", "color": "#E8955A", "description": "Freshly polished copper strip — bright salmon/copper colour, no tarnish.", "severity": 0, "status": "CLEAR"},
+    {"code": "1a", "label": "Slight Tarnish", "group": "Slight Tarnish", "color": "#EFB07A", "description": "Light orange, almost the same as a freshly polished strip.", "severity": 1, "status": "CLEAR"},
+    {"code": "1b", "label": "Slight Tarnish", "group": "Slight Tarnish", "color": "#D6822F", "description": "Dark orange.", "severity": 2, "status": "CLEAR"},
+    {"code": "2a", "label": "Moderate Tarnish", "group": "Moderate Tarnish", "color": "#A83B4B", "description": "Claret red.", "severity": 3, "status": "TARNISH"},
+    {"code": "2b", "label": "Moderate Tarnish", "group": "Moderate Tarnish", "color": "#B98FBE", "description": "Lavender.", "severity": 4, "status": "TARNISH"},
+    {"code": "2c", "label": "Moderate Tarnish", "group": "Moderate Tarnish", "color": "#9C6FA6", "description": "Multicoloured with lavender blue and/or silver overlaid on claret red.", "severity": 5, "status": "TARNISH"},
+    {"code": "2d", "label": "Moderate Tarnish", "group": "Moderate Tarnish", "color": "#BFBFBF", "description": "Silvery.", "severity": 6, "status": "TARNISH"},
+    {"code": "3a", "label": "Moderate Tarnish", "group": "Moderate Tarnish", "color": "#9C3A6B", "description": "Magenta overcast on a brassy/gold strip.", "severity": 7, "status": "TARNISH"},
+    {"code": "3b", "label": "Dark Tarnish", "group": "Dark Tarnish", "color": "#3E7D6B", "description": "Multicoloured with red and green (peacock), but no grey.", "severity": 8, "status": "TARNISH"},
+    {"code": "3c", "label": "Dark Tarnish", "group": "Dark Tarnish", "color": "#2E5A4E", "description": "Dark peacock / greenish tarnish.", "severity": 9, "status": "TARNISH"},
+    {"code": "4a", "label": "Corrosion", "group": "Corrosion", "color": "#4A4A4A", "description": "Transparent black, dark grey or brown with peacock green barely showing.", "severity": 10, "status": "TARNISH"},
+    {"code": "4b", "label": "Corrosion", "group": "Corrosion", "color": "#2B2B2B", "description": "Graphite or lusterless black.", "severity": 11, "status": "TARNISH"},
+    {"code": "4c", "label": "Corrosion", "group": "Corrosion", "color": "#141414", "description": "Glossy or jet black.", "severity": 12, "status": "TARNISH"},
+]
+COPPER_CLASS_MAP = {c["code"]: c for c in ASTM_D130_CLASSES}
+COPPER_CLEAR_CODES = {"0", "1a", "1b"}
+
+
+def copper_class_for(code) -> dict:
+    c = COPPER_CLASS_MAP.get(str(code or "").strip().lower())
+    return c or COPPER_CLASS_MAP["2a"]
+
+
+def _hex(h: str):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def generate_copper_reference() -> bytes:
+    """Render an ASTM D130 / IP 154 copper-strip standard chart (used both as
+    the on-screen reference and as the AI comparison image)."""
+    classes = ASTM_D130_CLASSES
+    n = len(classes)
+    margin, gap, strip_w, strip_h, top = 40, 12, 66, 300, 120
+    width = margin * 2 + n * strip_w + (n - 1) * gap
+    height = top + strip_h + 130
+    img = PILImage.new("RGB", (width, height), (244, 241, 236))
+    d = ImageDraw.Draw(img)
+
+    def font(sz):
+        try:
+            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", sz)
+        except Exception:
+            try:
+                return ImageFont.load_default(sz)
+            except Exception:
+                return ImageFont.load_default()
+
+    def ctext(cx, y, txt, fnt, fill):
+        try:
+            w = d.textlength(txt, font=fnt)
+        except Exception:
+            w = len(txt) * sz * 0.6  # noqa
+        d.text((cx - w / 2, y), txt, font=fnt, fill=fill)
+
+    d.text((margin, 28), "ASTM COPPER STRIP CORROSION STANDARDS", font=font(30), fill=(20, 20, 20))
+    d.text((margin, 68), "ASTM METHOD D 130 / IP 154", font=font(20), fill=(90, 90, 90))
+
+    x = margin
+    for c in classes:
+        rgb = _hex(c["color"])
+        # subtle vertical shading to look like a metal strip
+        for i in range(strip_h):
+            f = 1.0 - (i / strip_h) * 0.22
+            shade = tuple(max(0, min(255, int(v * f))) for v in rgb)
+            d.line([(x, top + i), (x + strip_w, top + i)], fill=shade)
+        d.rectangle([x, top, x + strip_w, top + strip_h], outline=(40, 40, 40), width=2)
+        cx = x + strip_w / 2
+        ctext(cx, top + strip_h + 12, c["code"].upper(), font(22), (17, 17, 17))
+        ctext(cx, top + strip_h + 44, "PASS" if c["code"] in COPPER_CLEAR_CODES else "TARNISH",
+              font(13), (21, 128, 61) if c["code"] in COPPER_CLEAR_CODES else (193, 34, 14))
+        x += strip_w + gap
+
+    d.text((margin, height - 34),
+           "Freshly Polished  |  1a-1b Slight  |  2a-3a Moderate  |  3b-3c Dark  |  4a-4c Corrosion",
+           font=font(16), fill=(70, 70, 70))
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=90)
+    return out.getvalue()
+
+
+_copper_ref_bytes: Optional[bytes] = None
+
+
+def copper_reference_bytes() -> bytes:
+    global _copper_ref_bytes
+    if _copper_ref_bytes is None:
+        _copper_ref_bytes = generate_copper_reference()
+    return _copper_ref_bytes
+
+
+def copper_reference_b64() -> str:
+    return base64.b64encode(copper_reference_bytes()).decode("utf-8")
+
+
+_COPPER_CLASS_TEXT = "\n".join(
+    f'  "{c["code"]}" = {c["group"]}: {c["description"]}' for c in ASTM_D130_CLASSES
+)
+
+COPPER_PROMPT = (
+    "You are an ASTM D130 / IP 154 Copper Strip Corrosion rating engine.\n\n"
+    "You are given TWO images:\n"
+    "1) The FIRST image is the official ASTM D130 / IP 154 copper strip corrosion STANDARD chart. "
+    "It shows the reference strips from Freshly Polished (brightest copper) through increasing tarnish "
+    "(orange -> red -> lavender -> silvery -> magenta -> peacock green) to Corrosion (black).\n"
+    "2) The SECOND image is the operator's SAMPLE copper strip that you must rate.\n\n"
+    "Visually COMPARE the colour/tarnish of the SAMPLE strip against the standard strips and pick the "
+    "classification whose appearance it most closely matches. Ignore glare, reflections and background.\n\n"
+    "Allowed classifications (code = group: description):\n"
+    + _COPPER_CLASS_TEXT +
+    "\n\nStatus rule: CLEAR when classification is 0, 1a or 1b; otherwise TARNISH.\n\n"
+    "Return ONLY a valid minified JSON object (no markdown) with EXACTLY these keys:\n"
+    '{"classification": <one of the codes above, e.g. "1b">, '
+    '"confidence": <number 0-100>, '
+    '"status": <"CLEAR" or "TARNISH">, '
+    '"summary": <one short sentence in BAHASA INDONESIA justifying the class by citing the observed colour, '
+    'e.g. "Warna oranye gelap pada strip cocok dengan kelas 1b (slight tarnish).">, '
+    '"recommendation": <one short sentence in BAHASA INDONESIA with a practical recommendation>}'
+)
+
+
+async def run_copper_vision(image_b64: str) -> dict:
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"copper-{uuid.uuid4()}",
+        system_message="You are a precise ASTM D130 copper-strip corrosion inspection model that only outputs JSON.",
+    ).with_model("gemini", "gemini-3.1-pro-preview")
+    ref_b64 = copper_reference_b64()
+    resp = await chat.send_message(
+        UserMessage(
+            text=COPPER_PROMPT,
+            file_contents=[ImageContent(image_base64=ref_b64), ImageContent(image_base64=image_b64)],
+        )
+    )
+    return _parse_ai_json(resp if isinstance(resp, str) else str(resp))
+
+
+class CopperMeta(BaseModel):
+    sample_id: str = ""
+    product: str = ""
+    batch: str = ""
+    operator: str = ""
+    temperature_c: float = 100
+    duration_hours: float = 3
+    remark: str = ""
+
+
+class CopperAnalyzeRequest(CopperMeta):
+    image_path: str
+
+
+class CopperRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    image_path: str
+    meta: CopperMeta
+    classification: str = "1a"
+    class_label: str = ""
+    group: str = ""
+    color: str = "#E8955A"
+    description: str = ""
+    severity: float = 0
+    confidence: float = 0
+    status: str = "CLEAR"
+    ai_summary: str = ""
+    recommendation: str = ""
+    ai_model: str = "gemini-3.1-pro-preview"
+    created_at: str = Field(default_factory=now_iso)
+    edited: bool = False
+    edited_at: Optional[str] = None
+    deleted_at: Optional[str] = None
+
+
+class CopperUpdate(BaseModel):
+    classification: Optional[str] = None
+    status: Optional[str] = None
+    ai_summary: Optional[str] = None
+    recommendation: Optional[str] = None
+
+
+def _build_copper_record(req: CopperAnalyzeRequest, ai: dict) -> CopperRecord:
+    cls = copper_class_for(ai.get("classification"))
+    meta = CopperMeta(**req.model_dump(exclude={"image_path"}))
+    return CopperRecord(
+        image_path=req.image_path,
+        meta=meta,
+        classification=cls["code"],
+        class_label=cls["label"],
+        group=cls["group"],
+        color=cls["color"],
+        description=cls["description"],
+        severity=cls["severity"],
+        confidence=_clamp(ai.get("confidence"), 0, 100),
+        status=cls["status"],
+        ai_summary=str(ai.get("summary", "")),
+        recommendation=str(ai.get("recommendation", "")),
+    )
+
+
+async def _analyze_copper(req: CopperAnalyzeRequest) -> CopperRecord:
+    try:
+        content, _ = await run_in_threadpool(get_object, req.image_path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found in storage")
+    small = await run_in_threadpool(_downscale_for_ai, content)
+    b64 = base64.b64encode(small).decode("utf-8")
+    try:
+        ai = await run_copper_vision(b64)
+    except Exception as e:
+        logger.exception("Copper AI vision failed")
+        raise HTTPException(status_code=502, detail=f"AI Vision analysis failed: {e}")
+    record = _build_copper_record(req, ai)
+    await db.copper_tests.insert_one(record.model_dump())
+    return record
+
+
+class CopperJob(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    status: str = "running"
+    record_id: Optional[str] = None
+    error: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+    finished_at: Optional[str] = None
+
+
+async def _run_copper_job(job_id: str, req: CopperAnalyzeRequest):
+    try:
+        record = await _analyze_copper(req)
+        await db.copper_jobs.update_one(
+            {"id": job_id}, {"$set": {"status": "done", "record_id": record.id, "finished_at": now_iso()}}
+        )
+    except HTTPException as e:
+        await db.copper_jobs.update_one(
+            {"id": job_id}, {"$set": {"status": "error", "error": str(e.detail), "finished_at": now_iso()}}
+        )
+    except Exception as e:
+        logger.exception("copper analyze job failed")
+        await db.copper_jobs.update_one(
+            {"id": job_id}, {"$set": {"status": "error", "error": str(e), "finished_at": now_iso()}}
+        )
+
+
+@api_router.post("/copper/analyze/start", response_model=CopperJob)
+async def copper_analyze_start(req: CopperAnalyzeRequest):
+    try:
+        await run_in_threadpool(get_object, req.image_path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found in storage")
+    job = CopperJob()
+    await db.copper_jobs.insert_one(job.model_dump())
+    asyncio.create_task(_run_copper_job(job.id, req))
+    return job
+
+
+@api_router.get("/copper/analyze/jobs/{job_id}", response_model=CopperJob)
+async def copper_job_status(job_id: str):
+    doc = await db.copper_jobs.find_one({"id": job_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return CopperJob(**doc)
+
+
+@api_router.get("/copper/tests", response_model=List[CopperRecord])
+async def copper_list(q: Optional[str] = None):
+    query: dict = {"deleted_at": None}
+    if q:
+        query["$or"] = [
+            {"meta.sample_id": {"$regex": q, "$options": "i"}},
+            {"meta.product": {"$regex": q, "$options": "i"}},
+            {"meta.batch": {"$regex": q, "$options": "i"}},
+            {"meta.operator": {"$regex": q, "$options": "i"}},
+        ]
+    docs = await db.copper_tests.find(query).sort("created_at", -1).to_list(500)
+    return [CopperRecord(**d) for d in docs]
+
+
+@api_router.get("/copper/tests/{test_id}", response_model=CopperRecord)
+async def copper_get(test_id: str):
+    doc = await db.copper_tests.find_one({"id": test_id, "deleted_at": None})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return CopperRecord(**doc)
+
+
+@api_router.put("/copper/tests/{test_id}", response_model=CopperRecord)
+async def copper_update(test_id: str, upd: CopperUpdate):
+    doc = await db.copper_tests.find_one({"id": test_id, "deleted_at": None})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+    changes: dict = {k: v for k, v in upd.model_dump(exclude_none=True).items()}
+    if "classification" in changes:
+        cls = copper_class_for(changes["classification"])
+        changes.update({
+            "classification": cls["code"], "class_label": cls["label"], "group": cls["group"],
+            "color": cls["color"], "description": cls["description"], "severity": cls["severity"],
+            "status": cls["status"],
+        })
+    if not changes:
+        return CopperRecord(**doc)
+    changes["edited"] = True
+    changes["edited_at"] = now_iso()
+    await db.copper_tests.update_one({"id": test_id}, {"$set": changes})
+    doc = await db.copper_tests.find_one({"id": test_id})
+    return CopperRecord(**doc)
+
+
+@api_router.delete("/copper/tests/{test_id}")
+async def copper_delete(test_id: str):
+    res = await db.copper_tests.update_one({"id": test_id}, {"$set": {"deleted_at": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return {"ok": True}
+
+
+@api_router.get("/copper/dashboard")
+async def copper_dashboard():
+    docs = await db.copper_tests.find({"deleted_at": None}).sort("created_at", -1).to_list(500)
+    tests = [CopperRecord(**d) for d in docs]
+    total = len(tests)
+    passed = sum(1 for t in tests if t.status == STATUS_CLEAR)
+    return {
+        "latest": tests[0].model_dump() if tests else None,
+        "total": total,
+        "passed": passed,
+        "failed": total - passed,
+    }
+
+
+@api_router.get("/copper/trend")
+async def copper_trend():
+    docs = await db.copper_tests.find({"deleted_at": None}).sort("created_at", 1).to_list(500)
+    tests = [CopperRecord(**d) for d in docs]
+    return [
+        {
+            "id": t.id, "classification": t.classification, "severity": t.severity,
+            "status": t.status, "sample_id": t.meta.sample_id, "created_at": t.created_at,
+        }
+        for t in tests
+    ]
+
+
+@api_router.get("/copper/reference-scale")
+async def copper_reference_scale():
+    doc = await db.reference.find_one({"key": "astm_d130_scale"})
+    if not doc:
+        await seed_copper_reference()
+        doc = await db.reference.find_one({"key": "astm_d130_scale"})
+    return {
+        "title": doc.get("title", "ASTM Copper Strip Corrosion Standards"),
+        "note": doc.get("note", ""),
+        "image": f"data:{doc.get('content_type', 'image/jpeg')};base64,{doc['image_base64']}",
+        "classes": doc.get("classes", ASTM_D130_CLASSES),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Seed demo data
 # ---------------------------------------------------------------------------
@@ -693,6 +1055,70 @@ async def seed_reference():
         logger.warning("seed_reference failed: %s", e)
 
 
+COPPER_SEED = [
+    {"sample_id": "CU-2026-07-30-001", "product": "Diesel Fuel B30", "batch": "LOT-CU-0730-A", "operator": "Karis Setia",
+     "classification": "1a", "confidence": 97.4,
+     "img": "https://images.unsplash.com/photo-1605152276897-4f618f831968?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
+     "summary": "Warna oranye muda hampir sama dengan strip terpoles, cocok dengan kelas 1a (slight tarnish).",
+     "recommendation": "Bahan bakar dalam kondisi baik, tidak korosif terhadap tembaga."},
+    {"sample_id": "CU-2026-07-28-004", "product": "Gasoline RON 92", "batch": "LOT-CU-0728-C", "operator": "Karis Setia",
+     "classification": "1b", "confidence": 95.0,
+     "img": "https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
+     "summary": "Warna oranye gelap merata pada strip cocok dengan kelas 1b (slight tarnish).",
+     "recommendation": "Masih memenuhi batas umum spesifikasi (<= 1b). Lanjutkan pemantauan rutin."},
+    {"sample_id": "CU-2026-07-25-002", "product": "Aviation Turbine Fuel", "batch": "LOT-CU-0725-B", "operator": "Dwi Agus",
+     "classification": "2c", "confidence": 92.6,
+     "img": "https://images.unsplash.com/photo-1614308457932-e16d85c5d053?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
+     "summary": "Muncul warna multiwarna lavender di atas merah claret, cocok dengan kelas 2c (moderate tarnish).",
+     "recommendation": "Melebihi batas 1b — periksa kandungan sulfur aktif pada bahan bakar."},
+    {"sample_id": "CU-2026-07-22-007", "product": "Marine Gas Oil", "batch": "LOT-CU-0722-D", "operator": "Dwi Agus",
+     "classification": "4b", "confidence": 90.1,
+     "img": "https://images.unsplash.com/photo-1581093458791-9d09a5c0a5b9?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
+     "summary": "Strip menghitam pekat tanpa kilau (graphite black), cocok dengan kelas 4b (corrosion).",
+     "recommendation": "Sangat korosif — jangan gunakan, lakukan treatment/penyaringan sebelum dipakai."},
+]
+
+
+async def seed_copper():
+    if await db.copper_tests.count_documents({}) > 0:
+        return
+    logger.info("Seeding demo Copper Strip tests...")
+    base = datetime.now(timezone.utc)
+    for i, s in enumerate(COPPER_SEED):
+        cls = copper_class_for(s["classification"])
+        rec = CopperRecord(
+            image_path=s["img"],
+            meta=CopperMeta(
+                sample_id=s["sample_id"], product=s["product"], batch=s["batch"], operator=s["operator"],
+                temperature_c=100, duration_hours=3,
+            ),
+            classification=cls["code"], class_label=cls["label"], group=cls["group"], color=cls["color"],
+            description=cls["description"], severity=cls["severity"], status=cls["status"],
+            confidence=s["confidence"], ai_summary=s["summary"], recommendation=s["recommendation"],
+        )
+        rec_dict = rec.model_dump()
+        rec_dict["created_at"] = (base - timedelta(days=i * 3)).isoformat()
+        await db.copper_tests.insert_one(rec_dict)
+
+
+async def seed_copper_reference():
+    """Store the generated ASTM D130 / IP 154 copper-strip standard chart (base64)
+    + class metadata in MongoDB. Idempotent."""
+    try:
+        doc = {
+            "key": "astm_d130_scale",
+            "title": "ASTM Copper Strip Corrosion Standards (D130 / IP 154)",
+            "note": "Freshly Polished · 1a–1b Slight Tarnish · 2a–3a Moderate Tarnish · 3b–3c Dark Tarnish · 4a–4c Corrosion. CLEAR (lulus) bila kelas 1a/1b.",
+            "content_type": "image/jpeg",
+            "image_base64": copper_reference_b64(),
+            "classes": ASTM_D130_CLASSES,
+            "updated_at": now_iso(),
+        }
+        await db.reference.replace_one({"key": "astm_d130_scale"}, doc, upsert=True)
+    except Exception as e:
+        logger.warning("seed_copper_reference failed: %s", e)
+
+
 @app.on_event("startup")
 async def on_startup():
     try:
@@ -704,9 +1130,17 @@ async def on_startup():
     except Exception as e:
         logger.warning("Reference seed failed: %s", e)
     try:
+        await seed_copper_reference()
+    except Exception as e:
+        logger.warning("Copper reference seed failed: %s", e)
+    try:
         await seed()
     except Exception as e:
         logger.warning("Seed failed: %s", e)
+    try:
+        await seed_copper()
+    except Exception as e:
+        logger.warning("Copper seed failed: %s", e)
     try:
         # One-time relabel of legacy records: PASS -> CLEAR, FAIL -> TARNISH.
         for old, new in LEGACY_STATUS.items():

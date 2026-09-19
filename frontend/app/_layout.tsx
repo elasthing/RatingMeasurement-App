@@ -40,9 +40,13 @@ export default function RootLayout() {
                       animation: "fade",
                     }}
                   >
-                    <Stack.Screen name="(tabs)" />
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="kht" />
+                    <Stack.Screen name="copper" />
                     <Stack.Screen name="result/[id]" />
+                    <Stack.Screen name="copper-result/[id]" />
                     <Stack.Screen name="color-scale" />
+                    <Stack.Screen name="copper-scale" />
                     <Stack.Screen name="settings" options={{ presentation: "modal" }} />
                   </Stack>
                 </View>
